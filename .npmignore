@@ -1,0 +1,48 @@
+# Source files (only publish compiled dist/)
+src/
+tsconfig.json
+*.ts
+
+# Development files
+.github/
+.vscode/
+.idea/
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Development dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and config files
+.env*
+.rag-config.json
+
+# Documentation that's not needed in package
+docs/
+PUBLISHING_GUIDE.md
+STEP_BY_STEP_GUIDE.md
+
+# Build artifacts we don't want to publish
+*.tsbuildinfo
+coverage/
+.nyc_output/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git files
+.git/
+.gitignore
+
+# Only include what's specified in package.json "files" field
