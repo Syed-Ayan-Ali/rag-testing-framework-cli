@@ -27,6 +27,18 @@ jobs:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
           
+      - name: Debug environment
+        run: |
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "Registry: $(npm config get registry)"
+          echo "Package name: $(node -p "require('./package.json').name")"
+          echo "Package version: $(node -p "require('./package.json').version")"
+          echo "Git ref: ${{ github.ref }}"
+          echo "Event name: ${{ github.event_name }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          
       - name: Install dependencies
         run: npm ci
         
@@ -39,24 +51,51 @@ jobs:
       - name: Check package contents
         run: npm pack --dry-run
         
+      - name: Check npm authentication
+        run: |
+          echo "Testing npm authentication..."
+          npm whoami || (echo "❌ Not authenticated to npm" && exit 1)
+          echo "✅ Authenticated to npm as: $(npm whoami)"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          
       - name: Check if version already exists
         id: check_version
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           PACKAGE_NAME=$(node -p "require('./package.json').name")
-          echo "Package: $PACKAGE_NAME@$PACKAGE_VERSION"
+          echo "🔍 Checking: $PACKAGE_NAME@$PACKAGE_VERSION"
           
+          # Check if package exists at all
+          if ! npm view "$PACKAGE_NAME" 2>/dev/null; then
+            echo "📦 Package '$PACKAGE_NAME' does not exist on npm yet"
+            echo "already_exists=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if this specific version exists
           if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version 2>/dev/null; then
-            echo "Version $PACKAGE_VERSION already exists on npm"
+            echo "❌ Version $PACKAGE_VERSION already exists on npm"
+            echo "📋 Existing versions:"
+            npm view "$PACKAGE_NAME" versions --json
             echo "already_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "Version $PACKAGE_VERSION does not exist, proceeding with publish"
+            echo "✅ Version $PACKAGE_VERSION does not exist, proceeding with publish"
+            echo "📋 Existing versions:"
+            npm view "$PACKAGE_NAME" versions --json
             echo "already_exists=false" >> $GITHUB_OUTPUT
           fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         
       - name: Publish to npm
         if: steps.check_version.outputs.already_exists == 'false'
-        run: npm publish
+        run: |
+          echo "🚀 Publishing to npm..."
+          echo "Package: $(node -p "require('./package.json').name")"
+          echo "Version: $(node -p "require('./package.json').version")"
+          npm publish --verbose
+          echo "✅ Successfully published to npm!"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           
