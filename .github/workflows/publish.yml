@@ -6,17 +6,9 @@ on:
     types: [published]
     
   # Trigger on git tags (for version releases)
-  # Trigger on push to main branch (optional)
   push:
     tags:
       - 'v*'
-    branches:
-      - main
-      - master
-    paths-ignore:
-      - 'README.md'
-      - 'docs/**'
-      - '*.md'
 
   # Allow manual triggering
   workflow_dispatch:
@@ -47,21 +39,42 @@ jobs:
       - name: Check package contents
         run: npm pack --dry-run
         
+      - name: Check if version already exists
+        id: check_version
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          echo "Package: $PACKAGE_NAME@$PACKAGE_VERSION"
+          
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version 2>/dev/null; then
+            echo "Version $PACKAGE_VERSION already exists on npm"
+            echo "already_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version $PACKAGE_VERSION does not exist, proceeding with publish"
+            echo "already_exists=false" >> $GITHUB_OUTPUT
+          fi
+        
       - name: Publish to npm
+        if: steps.check_version.outputs.already_exists == 'false'
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           
-      - name: Create GitHub release (if tag push)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Skip publish (version exists)
+        if: steps.check_version.outputs.already_exists == 'true'
+        run: echo "Skipping publish - version already exists on npm"
+          
+      - name: Create GitHub release (if tag push and published)
+        if: startsWith(github.ref, 'refs/tags/') && steps.check_version.outputs.already_exists == 'false'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
           body: |
             Changes in this Release
-            - Automated release from tag ${{ github.ref }}
+            - Automated release from tag ${{ github.ref_name }}
+            - Package published to npm
           draft: false
           prerelease: false

@@ -7,7 +7,7 @@ on:
       - main
       - master
       
-  # Run tests on pushes to main (before publish)
+  # Run tests on pushes to main (but don't publish)
   push:
     branches:
       - main
@@ -16,6 +16,7 @@ on:
       - 'README.md'
       - 'docs/**'
       - '*.md'
+      - '.github/**'
 
 jobs:
   test:
@@ -49,5 +50,5 @@ jobs:
       - name: Test CLI installation
         run: |
           npm link
-          rag-test --help
-          npm unlink -g
+          rag-test --help || (echo "CLI test failed" && exit 1)
+          npm unlink -g || true
