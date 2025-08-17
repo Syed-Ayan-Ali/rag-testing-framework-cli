@@ -15,10 +15,13 @@ import { TestConfiguration, ExperimentResults } from './types';
 
 const program = new Command();
 
+// Read version from package.json
+const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '../package.json'), 'utf-8'));
+
 program
   .name('rag-test')
   .description('CLI tool for testing RAG systems with different embedding combinations')
-  .version('1.0.0');
+  .version(packageJson.version);
 
 // Configure command
 program
