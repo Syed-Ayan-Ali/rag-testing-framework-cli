@@ -28,6 +28,9 @@ export class DatabaseConnection {
     try {
       const { data, error } = await this.supabase
         .rpc('test_connection');
+
+      console.log('data is: ', data);
+      console.log('error is: ', error);
       
       if (error) {
         console.error('Failed to fetch tables:', error);
