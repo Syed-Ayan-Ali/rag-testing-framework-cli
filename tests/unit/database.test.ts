@@ -40,22 +40,36 @@ describe('DatabaseConnection', () => {
   });
 
   describe('testConnection', () => {
-    it('should return true for successful connection', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({ error: null })
-        })
+    it('should return true for successful connection with table data', async () => {
+      const mockTableData = [
+        { table_name: 'users' },
+        { table_name: 'documents' }
+      ];
+      
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: mockTableData, 
+        error: null 
       });
 
       const result = await databaseConnection.testConnection();
       expect(result).toBe(true);
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('test_connection');
     });
 
     it('should return false for failed connection', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({ error: new Error('Connection failed') })
-        })
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: null, 
+        error: new Error('Connection failed') 
+      });
+
+      const result = await databaseConnection.testConnection();
+      expect(result).toBe(false);
+    });
+
+    it('should return false for empty table data', async () => {
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: [], 
+        error: null 
       });
 
       const result = await databaseConnection.testConnection();
@@ -63,26 +77,21 @@ describe('DatabaseConnection', () => {
     });
 
     it('should handle connection exceptions', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          limit: jest.fn().mockRejectedValue(new Error('Network error'))
-        })
-      });
+      mockSupabase.rpc = jest.fn().mockRejectedValue(new Error('Network error'));
 
       const result = await databaseConnection.testConnection();
       expect(result).toBe(false);
     });
 
-    it('should query information_schema.tables for connection test', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({ error: null })
-        })
+    it('should use test_connection RPC function', async () => {
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: [{ table_name: 'test' }], 
+        error: null 
       });
 
       await databaseConnection.testConnection();
       
-      expect(mockSupabase.from).toHaveBeenCalledWith('information_schema.tables');
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('test_connection');
     });
   });
 
@@ -94,48 +103,21 @@ describe('DatabaseConnection', () => {
         { table_name: 'categories' }
       ];
 
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: mockData, error: null })
-          })
-        })
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: mockData, 
+        error: null 
       });
 
       const tables = await databaseConnection.getTables();
       
       expect(tables).toEqual(['users', 'documents', 'categories']);
-      expect(mockSupabase.from).toHaveBeenCalledWith('information_schema.tables');
-    });
-
-    it('should filter by public schema and base tables', async () => {
-      // Create a proper chain mock where eq returns another chainable object
-      const finalChain = {
-        eq: jest.fn().mockResolvedValue({ data: [], error: null })
-      };
-      
-      const firstChain = {
-        eq: jest.fn().mockReturnValue(finalChain)
-      };
-      
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue(firstChain)
-      });
-
-      await databaseConnection.getTables();
-      
-      // Verify the eq methods were called with the correct parameters
-      expect(firstChain.eq).toHaveBeenCalledWith('table_schema', 'public');
-      expect(finalChain.eq).toHaveBeenCalledWith('table_type', 'BASE TABLE');
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('test_connection');
     });
 
     it('should return empty array on error', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: null, error: new Error('Query failed') })
-          })
-        })
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: null, 
+        error: new Error('Query failed') 
       });
 
       const tables = await databaseConnection.getTables();
@@ -143,25 +125,26 @@ describe('DatabaseConnection', () => {
     });
 
     it('should handle exceptions gracefully', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockRejectedValue(new Error('Network error'))
-          })
-        })
-      });
+      mockSupabase.rpc = jest.fn().mockRejectedValue(new Error('Network error'));
 
       const tables = await databaseConnection.getTables();
       expect(tables).toEqual([]);
     });
 
     it('should handle null data response', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: null, error: null })
-          })
-        })
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: null, 
+        error: null 
+      });
+
+      const tables = await databaseConnection.getTables();
+      expect(tables).toEqual([]);
+    });
+
+    it('should handle empty array response', async () => {
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: [], 
+        error: null 
       });
 
       const tables = await databaseConnection.getTables();
@@ -177,19 +160,10 @@ describe('DatabaseConnection', () => {
     ];
 
     it('should return table information successfully', async () => {
-      // Mock columns query
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: mockColumnsData, error: null })
-          })
-        })
-      });
-
-      // Mock count query
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockResolvedValue({ count: 100, error: null })
-      });
+      // Mock columns RPC call
+      mockSupabase.rpc = jest.fn()
+        .mockResolvedValueOnce({ data: mockColumnsData, error: null })
+        .mockResolvedValueOnce({ data: 100, error: null });
 
       const tableInfo = await databaseConnection.getTableInfo('test_table');
 
@@ -202,28 +176,22 @@ describe('DatabaseConnection', () => {
         ],
         rowCount: 100
       });
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_columns', { table_name_param: 'test_table' });
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_row_count', { table_name_param: 'test_table' });
     });
 
     it('should return null for non-existent table', async () => {
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: [], error: null })
-          })
-        })
-      });
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ data: [], error: null });
 
       const tableInfo = await databaseConnection.getTableInfo('non_existent');
       expect(tableInfo).toBeNull();
     });
 
     it('should handle columns query error', async () => {
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: null, error: new Error('Column query failed') })
-          })
-        })
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: null, 
+        error: new Error('Column query failed') 
       });
 
       const tableInfo = await databaseConnection.getTableInfo('test_table');
@@ -231,17 +199,9 @@ describe('DatabaseConnection', () => {
     });
 
     it('should handle count query error gracefully', async () => {
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: mockColumnsData, error: null })
-          })
-        })
-      });
-
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockResolvedValue({ count: null, error: new Error('Count failed') })
-      });
+      mockSupabase.rpc = jest.fn()
+        .mockResolvedValueOnce({ data: mockColumnsData, error: null })
+        .mockResolvedValueOnce({ data: null, error: new Error('Count failed') });
 
       const tableInfo = await databaseConnection.getTableInfo('test_table');
 
@@ -256,23 +216,15 @@ describe('DatabaseConnection', () => {
       });
     });
 
-    it('should query information_schema.columns correctly', async () => {
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            eq: jest.fn().mockResolvedValue({ data: mockColumnsData, error: null })
-          })
-        })
-      });
-
-      mockSupabase.from.mockReturnValueOnce({
-        select: jest.fn().mockResolvedValue({ count: 100, error: null })
-      });
+    it('should use RPC functions correctly', async () => {
+      mockSupabase.rpc = jest.fn()
+        .mockResolvedValueOnce({ data: mockColumnsData, error: null })
+        .mockResolvedValueOnce({ data: 100, error: null });
 
       await databaseConnection.getTableInfo('test_table');
 
-      const firstCall = mockSupabase.from.mock.calls[0];
-      expect(firstCall[0]).toBe('information_schema.columns');
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_columns', { table_name_param: 'test_table' });
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_row_count', { table_name_param: 'test_table' });
     });
   });
 
@@ -380,10 +332,9 @@ describe('DatabaseConnection', () => {
     });
 
     it('should return true after successful connection test', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({ error: null })
-        })
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: [{ table_name: 'test_table' }], 
+        error: null 
       });
 
       await databaseConnection.testConnection();
@@ -391,10 +342,9 @@ describe('DatabaseConnection', () => {
     });
 
     it('should return false after failed connection test', async () => {
-      mockSupabase.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          limit: jest.fn().mockResolvedValue({ error: new Error('Failed') })
-        })
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ 
+        data: null, 
+        error: new Error('Failed') 
       });
 
       await databaseConnection.testConnection();

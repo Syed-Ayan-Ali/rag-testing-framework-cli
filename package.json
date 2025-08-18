@@ -41,12 +41,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/rag-cli-tester.git"
+    "url": "git+https://github.com/Syed-Ayan-Ali/rag-cli-tester.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/rag-cli-tester/issues"
+    "url": "https://github.com/Syed-Ayan-Ali/rag-cli-tester/issues"
   },
-  "homepage": "https://github.com/yourusername/rag-cli-tester#readme",
+  "homepage": "https://github.com/Syed-Ayan-Ali/rag-cli-tester#readme",
   "engines": {
     "node": ">=18.0.0"
   },

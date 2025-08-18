@@ -12,14 +12,10 @@ export class DatabaseConnection {
   async testConnection(): Promise<boolean> {
     try {
       const { data, error } = await this.supabase
-        .from('information_schema.tables')
-        .select('table_name')
-        .limit(1);
-
-      console.log('data is: ', data);
-      console.log('error is: ', error);
-
-      this.isConnected = !error;
+        .rpc('test_connection');
+      
+      // Connection is successful if we get data (array of tables) and no error
+      this.isConnected = !error && data && Array.isArray(data) && data.length > 0;
       return this.isConnected;
     } catch (error) {
       console.error('Database connection failed:', error);
@@ -31,10 +27,7 @@ export class DatabaseConnection {
   async getTables(): Promise<string[]> {
     try {
       const { data, error } = await this.supabase
-        .from('information_schema.tables')
-        .select('table_name')
-        .eq('table_schema', 'public')
-        .eq('table_type', 'BASE TABLE');
+        .rpc('test_connection');
       
       if (error) {
         console.error('Failed to fetch tables:', error);
@@ -50,12 +43,9 @@ export class DatabaseConnection {
 
   async getTableInfo(tableName: string): Promise<TableInfo | null> {
     try {
-      // Get column information
+      // Get column information using RPC function
       const { data: columnsData, error: columnsError } = await this.supabase
-        .from('information_schema.columns')
-        .select('column_name, data_type, is_nullable')
-        .eq('table_name', tableName)
-        .eq('table_schema', 'public');
+        .rpc('get_table_columns', { table_name_param: tableName });
 
       if (columnsError) throw columnsError;
 
@@ -63,10 +53,9 @@ export class DatabaseConnection {
         return null;
       }
 
-      // Get row count
-      const { count, error: countError } = await this.supabase
-        .from(tableName)
-        .select('*', { count: 'exact', head: true });
+      // Get row count using RPC function
+      const { data: rowCount, error: countError } = await this.supabase
+        .rpc('get_table_row_count', { table_name_param: tableName });
 
       if (countError) {
         console.warn(`Could not get row count for ${tableName}:`, countError);
@@ -79,7 +68,7 @@ export class DatabaseConnection {
           data_type: row.data_type,
           is_nullable: row.is_nullable === 'YES'
         })),
-        rowCount: count || 0
+        rowCount: rowCount || 0
       };
     } catch (error) {
       console.error(`Failed to get table info for ${tableName}:`, error);
