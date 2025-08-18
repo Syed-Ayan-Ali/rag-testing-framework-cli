@@ -214,10 +214,11 @@ describe('Integration Validation Tests', () => {
     });
 
     it('should handle empty data gracefully', async () => {
-      mockDatabaseConnection.getTableData.mockResolvedValueOnce([]);
+      // Override the beforeEach mock specifically for this test
+      mockDatabaseConnection.getTableData.mockImplementation(async () => []);
       
-      // Make sure the test actually expects the real behavior
-      await expect(ragTester.runExperiment(mockConfig)).rejects.toThrow();
+      // With empty data, all combinations will fail, resulting in "No combinations produced valid results"
+      await expect(ragTester.runExperiment(mockConfig)).rejects.toThrow('No combinations produced valid results');
     });
 
     it('should filter out invalid data rows', async () => {
