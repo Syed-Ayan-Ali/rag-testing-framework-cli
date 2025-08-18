@@ -13,6 +13,12 @@ on:
   # Allow manual triggering
   workflow_dispatch:
 
+# Add permissions for GitHub token
+permissions:
+  contents: write
+  packages: write
+  pull-requests: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -103,12 +109,22 @@ jobs:
         if: steps.check_version.outputs.already_exists == 'true'
         run: echo "Skipping publish - version already exists on npm"
           
+      - name: Debug GitHub token permissions
+        if: startsWith(github.ref, 'refs/tags/') && steps.check_version.outputs.already_exists == 'false'
+        run: |
+          echo "Repository: ${{ github.repository }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref name: ${{ github.ref_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Token permissions check..."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
       - name: Create GitHub release (if tag push and published)
         if: startsWith(github.ref, 'refs/tags/') && steps.check_version.outputs.already_exists == 'false'
         uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           body: |
