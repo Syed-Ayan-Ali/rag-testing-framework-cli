@@ -13,7 +13,8 @@ export class DatabaseConnection {
     try {
       const { data, error } = await this.supabase
         .rpc('test_connection');
-      
+        console.log('data is: ', data);
+        console.log('error is: ', error);
       // Connection is successful if we get data (array of tables) and no error
       this.isConnected = !error && data && Array.isArray(data) && data.length > 0;
       return this.isConnected;
