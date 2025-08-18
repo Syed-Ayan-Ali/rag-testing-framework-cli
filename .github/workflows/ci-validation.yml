@@ -1,0 +1,381 @@
+name: CI Validation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  lint-and-format:
+    name: Lint and Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Check TypeScript compilation
+      run: npm run build
+      
+    - name: Run linting (if configured)
+      run: npm run lint
+      continue-on-error: true
+      
+    - name: Check for TypeScript errors
+      run: npx tsc --noEmit
+      
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Run unit tests
+      run: npm run test:unit
+      
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      if: success()
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+      continue-on-error: true
+
+  validation-tests:
+    name: Validation Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Run validation tests
+      run: npm run test:validation
+      
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Run integration tests
+      run: npm run test:integration
+      
+  cli-functionality:
+    name: CLI Functionality Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Test CLI help command
+      run: node dist/cli.js --help
+      
+    - name: Test CLI version command
+      run: node dist/cli.js --version
+      
+    - name: Test CLI command structure
+      run: |
+        node dist/cli.js configure --help || true
+        node dist/cli.js tables --help || true
+        node dist/cli.js test --help || true
+        node dist/cli.js inspect --help || true
+      
+    - name: Test CLI error handling
+      run: |
+        if node dist/cli.js invalid-command 2>/dev/null; then
+          echo "CLI should have failed with invalid command"
+          exit 1
+        else
+          echo "CLI correctly handled invalid command"
+        fi
+
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run security audit
+      run: npm audit --audit-level=moderate
+      continue-on-error: true
+      
+    - name: Check for high severity vulnerabilities
+      run: npm audit --audit-level=high
+
+  performance-tests:
+    name: Performance and Resource Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Test build size
+      run: |
+        echo "Checking build output size..."
+        du -sh dist/
+        # Fail if build is unreasonably large (>10MB)
+        BUILD_SIZE=$(du -sm dist/ | cut -f1)
+        if [ $BUILD_SIZE -gt 10 ]; then
+          echo "Build size ${BUILD_SIZE}MB exceeds 10MB limit"
+          exit 1
+        fi
+        echo "Build size ${BUILD_SIZE}MB is acceptable"
+        
+    - name: Test CLI startup performance
+      run: |
+        echo "Testing CLI startup time..."
+        time timeout 10s node dist/cli.js --help > /dev/null
+        echo "CLI startup completed successfully"
+        
+    - name: Test memory usage
+      run: |
+        echo "Testing CLI memory usage..."
+        /usr/bin/time -v timeout 10s node dist/cli.js --help 2>&1 | grep "Maximum resident set size" || true
+
+  cross-platform:
+    name: Cross-Platform Compatibility
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: ['18', '20']
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Test CLI commands
+      run: |
+        node dist/cli.js --version
+        node dist/cli.js --help
+      shell: bash
+
+  package-validation:
+    name: Package Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Validate package.json
+      run: |
+        echo "Validating package.json structure..."
+        node -e "
+          const pkg = require('./package.json');
+          const required = ['name', 'version', 'description', 'main', 'bin', 'scripts', 'keywords', 'author', 'license'];
+          const missing = required.filter(field => !pkg[field]);
+          if (missing.length > 0) {
+            console.error('Missing required fields:', missing);
+            process.exit(1);
+          }
+          console.log('package.json validation passed');
+        "
+        
+    - name: Test package installation
+      run: |
+        echo "Testing local package installation..."
+        npm pack
+        PACKAGE_FILE=$(ls *.tgz)
+        echo "Package file: $PACKAGE_FILE"
+        
+        # Test installation in a temporary directory
+        mkdir test-install
+        cd test-install
+        npm init -y
+        npm install ../$PACKAGE_FILE
+        
+        # Test that the CLI is available
+        npx rag-test --version
+        npx rag-test --help
+        
+    - name: Validate TypeScript definitions
+      run: |
+        echo "Checking TypeScript definitions..."
+        if [ -f "dist/index.d.ts" ]; then
+          echo "TypeScript definitions found"
+        else
+          echo "Warning: No TypeScript definitions found"
+        fi
+
+  documentation-check:
+    name: Documentation Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check README.md
+      run: |
+        if [ ! -f "README.md" ]; then
+          echo "Error: README.md not found"
+          exit 1
+        fi
+        
+        echo "Checking README.md content..."
+        grep -i "installation" README.md || (echo "README should include installation instructions" && exit 1)
+        grep -i "usage" README.md || (echo "README should include usage instructions" && exit 1)
+        grep -i "example" README.md || echo "Warning: README should include examples"
+        
+    - name: Check for license file
+      run: |
+        if [ ! -f "LICENSE" ]; then
+          echo "Warning: LICENSE file not found"
+        else
+          echo "LICENSE file found"
+        fi
+        
+    - name: Validate CLI help output
+      run: |
+        npm ci
+        npm run build
+        echo "Testing CLI help completeness..."
+        node dist/cli.js --help | grep -i "description" || echo "Warning: CLI help should include description"
+        node dist/cli.js --help | grep -i "usage" || echo "Warning: CLI help should include usage"
+        node dist/cli.js --help | grep -i "commands" || echo "Warning: CLI help should list commands"
+
+  final-validation:
+    name: Final Validation Summary
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, unit-tests, validation-tests, integration-tests, cli-functionality, security-scan, performance-tests, package-validation, documentation-check]
+    if: always()
+    
+    steps:
+    - name: Check all jobs status
+      run: |
+        echo "=== Final Validation Summary ==="
+        echo "Lint and Format: ${{ needs.lint-and-format.result }}"
+        echo "Unit Tests: ${{ needs.unit-tests.result }}"
+        echo "Validation Tests: ${{ needs.validation-tests.result }}"
+        echo "Integration Tests: ${{ needs.integration-tests.result }}"
+        echo "CLI Functionality: ${{ needs.cli-functionality.result }}"
+        echo "Security Scan: ${{ needs.security-scan.result }}"
+        echo "Performance Tests: ${{ needs.performance-tests.result }}"
+        echo "Package Validation: ${{ needs.package-validation.result }}"
+        echo "Documentation Check: ${{ needs.documentation-check.result }}"
+        
+        # Fail if any critical jobs failed
+        if [[ "${{ needs.unit-tests.result }}" == "failure" || 
+              "${{ needs.validation-tests.result }}" == "failure" || 
+              "${{ needs.cli-functionality.result }}" == "failure" ]]; then
+          echo "❌ Critical validation jobs failed"
+          exit 1
+        fi
+        
+        echo "✅ All critical validations passed"

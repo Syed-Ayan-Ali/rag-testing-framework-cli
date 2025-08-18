@@ -85,6 +85,7 @@ program
       
       if (!isConnected) {
         spinner.fail('Failed to connect to database');
+        console.error('database config is: ', config.database);
         console.error(chalk.red('Please check your database configuration.'));
         process.exit(1);
       }

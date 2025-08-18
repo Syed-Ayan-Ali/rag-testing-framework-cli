@@ -10,9 +10,21 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "ts-node src/cli.ts",
-    "test": "echo \"Error: no test specified\" && exit 0",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:validation": "jest tests/validation",
+    "test:integration": "jest tests/validation/integration.test.ts",
+    "test:cli": "jest tests/validation/cli-validation.test.ts",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:all": "jest --coverage && npm run test:cli",
+    "test:runner": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1",
+    "test:runner:linux": "bash scripts/run-tests.sh",
+    "test:runner:integration": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -WithIntegration",
+    "test:runner:install": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestInstall",
     "lint": "echo \"No linting configured\" && exit 0",
-    "prepublishOnly": "npm run build"
+    "validate": "npm run build && npm run test:all",
+    "prepublishOnly": "npm run validate"
   },
   "keywords": [
     "rag",
@@ -46,17 +58,20 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.55.0",
     "@xenova/transformers": "^2.17.2",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
     "commander": "^12.0.0",
     "dotenv": "^16.4.5",
     "inquirer": "^8.2.6",
-    "chalk": "^4.1.2",
-    "ora": "^5.4.1",
-    "cli-table3": "^0.6.5"
+    "ora": "^5.4.1"
   },
   "devDependencies": {
-    "@types/node": "^20.16.13",
     "@types/inquirer": "^8.2.10",
-    "typescript": "^5.6.3",
-    "ts-node": "^10.9.2"
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.16.13",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
   }
 }

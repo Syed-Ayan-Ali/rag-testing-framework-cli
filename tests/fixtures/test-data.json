@@ -1,0 +1,83 @@
+{
+  "testTableData": [
+    {
+      "id": 1,
+      "title": "Banking Regulation Guide",
+      "content": "This document covers banking regulations and compliance requirements for financial institutions.",
+      "category": "regulation",
+      "tags": ["banking", "compliance", "regulation"],
+      "date": "2024-01-15"
+    },
+    {
+      "id": 2,
+      "title": "Risk Management Framework",
+      "content": "Comprehensive framework for risk assessment and management in banking operations.",
+      "category": "risk",
+      "tags": ["risk", "management", "framework"],
+      "date": "2024-01-20"
+    },
+    {
+      "id": 3,
+      "title": "Capital Requirements Directive",
+      "content": "Guidelines for capital adequacy and liquidity requirements for banks.",
+      "category": "capital",
+      "tags": ["capital", "liquidity", "requirements"],
+      "date": "2024-01-25"
+    },
+    {
+      "id": 4,
+      "title": "Operational Risk Guidelines",
+      "content": "Best practices for managing operational risk in financial services.",
+      "category": "risk",
+      "tags": ["operational", "risk", "guidelines"],
+      "date": "2024-02-01"
+    },
+    {
+      "id": 5,
+      "title": "Stress Testing Procedures",
+      "content": "Methodology for conducting stress tests on banking portfolios.",
+      "category": "testing",
+      "tags": ["stress", "testing", "methodology"],
+      "date": "2024-02-05"
+    }
+  ],
+  "testQueries": [
+    {
+      "query": "What are the banking regulation requirements?",
+      "expectedAnswer": "Banking Regulation Guide",
+      "category": "regulation"
+    },
+    {
+      "query": "How to manage operational risk?",
+      "expectedAnswer": "Operational Risk Guidelines",
+      "category": "risk"
+    },
+    {
+      "query": "What are stress testing procedures?",
+      "expectedAnswer": "Stress Testing Procedures",
+      "category": "testing"
+    }
+  ],
+  "columnCombinations": [
+    {
+      "columns": ["title"],
+      "name": "title",
+      "expectedResults": 3
+    },
+    {
+      "columns": ["content"],
+      "name": "content",
+      "expectedResults": 3
+    },
+    {
+      "columns": ["title", "content"],
+      "name": "title + content",
+      "expectedResults": 3
+    },
+    {
+      "columns": ["title", "category"],
+      "name": "title + category",
+      "expectedResults": 3
+    }
+  ]
+}
