@@ -1,4 +1,6 @@
 import { EmbeddingConfig, ColumnCombination } from './types';
+import { pipeline } from '@xenova/transformers';
+
 
 export interface EmbeddingResult {
   id: string;
@@ -24,15 +26,16 @@ export class EmbeddingGenerator {
   }
 
   async initialize(): Promise<void> {
-    try {
-      const { pipeline } = await import('@xenova/transformers');
-      this.embeddingPipeline = await pipeline(
-        'feature-extraction',
-        this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
-      );
-    } catch (error) {
-      console.error('Failed to initialize embedding model:', error);
-      throw error;
+    if (this.config.model === 'local') {
+      try {
+        this.embeddingPipeline = await pipeline(
+          'feature-extraction',
+          this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
+        );
+      } catch (error) {
+        console.error('Failed to initialize local embedding model:', error);
+        throw error;
+      }
     }
   }
 
