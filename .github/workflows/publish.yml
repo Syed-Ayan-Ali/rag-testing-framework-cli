@@ -105,15 +105,28 @@ jobs:
           
       - name: Create GitHub release (if tag push and published)
         if: startsWith(github.ref, 'refs/tags/') && steps.check_version.outputs.already_exists == 'false'
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           body: |
-            Changes in this Release
-            - Automated release from tag ${{ github.ref_name }}
-            - Package published to npm
+            ## 🚀 Release ${{ github.ref_name }}
+            
+            ### Changes in this Release
+            - ✅ Automated release from tag ${{ github.ref_name }}
+            - 📦 Package published to npm
+            - 🧪 All tests passed
+            
+            ### Installation
+            ```bash
+            npm install -g rag-cli-tester
+            ```
+            
+            ### Usage
+            ```bash
+            rag-test --help
+            ```
           draft: false
           prerelease: false
