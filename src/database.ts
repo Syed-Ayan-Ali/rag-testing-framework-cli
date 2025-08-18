@@ -11,10 +11,8 @@ export class DatabaseConnection {
 
   async testConnection(): Promise<boolean> {
     try {
-      const { error } = await this.supabase
-        .from('information_schema.tables')
-        .select('table_name')
-        .limit(1);
+      const { data, error } = await this.supabase
+        .rpc('test_connection');
       
       this.isConnected = !error;
       return this.isConnected;
