@@ -25,18 +25,15 @@ export class EmbeddingGenerator {
   }
 
   async initialize(): Promise<void> {
-    if (this.config.model === 'local') {
-      try {
-        // Dynamic import for ES module
-        const { pipeline } = await import('@xenova/transformers');
-        this.embeddingPipeline = await pipeline(
-          'feature-extraction',
-          this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
-        );
-      } catch (error) {
-        console.error('Failed to initialize local embedding model:', error);
-        throw error;
-      }
+    try {
+      const { pipeline } = await import('@xenova/transformers');
+      this.embeddingPipeline = await pipeline(
+        'feature-extraction',
+        this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
+      );
+    } catch (error) {
+      console.error('Failed to initialize embedding model:', error);
+      throw error;
     }
   }
 
