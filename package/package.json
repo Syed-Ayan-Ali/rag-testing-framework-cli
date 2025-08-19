@@ -1,0 +1,77 @@
+{
+  "name": "rag-cli-tester",
+  "version": "1.0.20",
+  "description": "A lightweight CLI tool for testing RAG (Retrieval-Augmented Generation) systems with different embedding combinations",
+  "main": "dist/index.js",
+  "bin": {
+    "rag-test": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "ts-node src/cli.ts",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:validation": "jest tests/validation",
+    "test:integration": "jest tests/validation/integration.test.ts",
+    "test:cli": "jest tests/validation/cli-validation.test.ts",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:all": "jest --coverage && npm run test:cli",
+    "test:runner": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1",
+    "test:runner:linux": "bash scripts/run-tests.sh",
+    "test:runner:integration": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -WithIntegration",
+    "test:runner:install": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestInstall",
+    "lint": "echo \"No linting configured\" && exit 0",
+    "validate": "npm run build && npm run test:all",
+    "prepublishOnly": "npm run validate"
+  },
+  "keywords": [
+    "rag",
+    "testing",
+    "embeddings",
+    "cli",
+    "ai",
+    "nlp",
+    "similarity",
+    "database",
+    "evaluation"
+  ],
+  "author": "AI Assistant",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Syed-Ayan-Ali/rag-cli-tester.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Syed-Ayan-Ali/rag-cli-tester/issues"
+  },
+  "homepage": "https://github.com/Syed-Ayan-Ali/rag-cli-tester#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@supabase/supabase-js": "^2.55.0",
+    "@xenova/transformers": "^2.17.2",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.5",
+    "inquirer": "^8.2.6",
+    "ora": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^8.2.10",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.16.13",
+    "jest": "^30.0.5",
+    "ts-jest": "^29.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  }
+}

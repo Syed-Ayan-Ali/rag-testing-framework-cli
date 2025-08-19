@@ -26,8 +26,9 @@ export class EmbeddingGenerator {
 
   async initialize(): Promise<void> {
     try {
-      const { pipeline } = await import('@xenova/transformers');
-      this.embeddingPipeline = await pipeline(
+      // Use eval to bypass TypeScript's import compilation
+      const transformers = await eval('import("@xenova/transformers")');
+      this.embeddingPipeline = await transformers.pipeline(
         'feature-extraction',
         this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
       );
