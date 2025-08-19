@@ -1,5 +1,4 @@
 import { EmbeddingConfig, ColumnCombination } from './types';
-import { pipeline } from '@xenova/transformers';
 
 
 export interface EmbeddingResult {
@@ -28,6 +27,8 @@ export class EmbeddingGenerator {
   async initialize(): Promise<void> {
     if (this.config.model === 'local') {
       try {
+        // Dynamic import for ES module
+        const { pipeline } = await import('@xenova/transformers');
         this.embeddingPipeline = await pipeline(
           'feature-extraction',
           this.config.localModel || 'Xenova/all-MiniLM-L6-v2'

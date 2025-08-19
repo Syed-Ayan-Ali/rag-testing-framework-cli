@@ -11,11 +11,10 @@ export class DatabaseConnection {
 
   async testConnection(): Promise<boolean> {
     try {
-      const { data, error } = await this.supabase
-        .rpc('test_connection');
-        console.log('data is: ', data);
-        console.log('error is: ', error);
-      // Connection is successful if we get data (array of tables) and no error
+              const { data, error } = await this.supabase
+          .rpc('test_connection');
+        
+        // Connection is successful if we get data (array of tables) and no error
       this.isConnected = !error && data && Array.isArray(data) && data.length > 0;
       return this.isConnected;
     } catch (error) {
@@ -27,13 +26,10 @@ export class DatabaseConnection {
 
   async getTables(): Promise<string[]> {
     try {
-      const { data, error } = await this.supabase
-        .rpc('test_connection');
-
-      console.log('data is: ', data);
-      console.log('error is: ', error);
-      
-      if (error) {
+              const { data, error } = await this.supabase
+          .rpc('test_connection');
+        
+        if (error) {
         console.error('Failed to fetch tables:', error);
         return [];
       }
