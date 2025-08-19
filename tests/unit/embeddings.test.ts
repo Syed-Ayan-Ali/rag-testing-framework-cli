@@ -1,14 +1,10 @@
-import { EmbeddingGenerator } from '../../src/embeddings';
+import { EmbeddingGenerator, PipelineProvider } from '../../src/embeddings';
 import { EmbeddingConfig, ColumnCombination } from '../../src/types';
-
-// Mock the transformers library
-jest.mock('@xenova/transformers', () => ({
-  pipeline: jest.fn()
-}));
 
 describe('EmbeddingGenerator', () => {
   let embeddingGenerator: EmbeddingGenerator;
   let mockPipeline: jest.Mock;
+  let mockPipelineProvider: jest.Mocked<PipelineProvider>;
   
   const testConfig: EmbeddingConfig = {
     model: 'local',
@@ -17,10 +13,11 @@ describe('EmbeddingGenerator', () => {
 
   beforeEach(() => {
     mockPipeline = jest.fn();
-    const { pipeline } = require('@xenova/transformers');
-    pipeline.mockResolvedValue(mockPipeline);
+    mockPipelineProvider = {
+      createPipeline: jest.fn().mockResolvedValue(mockPipeline)
+    };
     
-    embeddingGenerator = new EmbeddingGenerator(testConfig);
+    embeddingGenerator = new EmbeddingGenerator(testConfig, mockPipelineProvider);
   });
 
   afterEach(() => {
@@ -31,25 +28,22 @@ describe('EmbeddingGenerator', () => {
     it('should initialize the embedding pipeline successfully', async () => {
       await embeddingGenerator.initialize();
       
-      const { pipeline } = require('@xenova/transformers');
-      expect(pipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+      expect(mockPipelineProvider.createPipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
     });
 
     it('should throw error if initialization fails', async () => {
-      const { pipeline } = require('@xenova/transformers');
-      pipeline.mockRejectedValueOnce(new Error('Model loading failed'));
+      mockPipelineProvider.createPipeline.mockRejectedValueOnce(new Error('Model loading failed'));
 
       await expect(embeddingGenerator.initialize()).rejects.toThrow('Model loading failed');
     });
 
     it('should use default model if none specified', async () => {
       const configWithoutModel: EmbeddingConfig = { model: 'local' };
-      const generator = new EmbeddingGenerator(configWithoutModel);
+      const generator = new EmbeddingGenerator(configWithoutModel, mockPipelineProvider);
       
       await generator.initialize();
       
-      const { pipeline } = require('@xenova/transformers');
-      expect(pipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+      expect(mockPipelineProvider.createPipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
     });
   });
 
@@ -181,7 +175,7 @@ describe('EmbeddingGenerator', () => {
     });
 
     it('should throw error if pipeline not initialized', async () => {
-      const uninitializedGenerator = new EmbeddingGenerator(testConfig);
+      const uninitializedGenerator = new EmbeddingGenerator(testConfig, mockPipelineProvider);
       
       await expect(uninitializedGenerator.generateEmbedding('test'))
         .rejects.toThrow('Embedding pipeline not initialized');

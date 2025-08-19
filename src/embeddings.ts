@@ -16,29 +16,31 @@ export interface TrainingData {
   totalRows: number;
 }
 
+export interface PipelineProvider {
+  createPipeline(task: string, model: string): Promise<any>;
+}
+
+export class TransformersPipelineProvider implements PipelineProvider {
+  async createPipeline(task: string, model: string): Promise<any> {
+    // Use eval to bypass TypeScript's import compilation
+    const transformers = await eval('import("@xenova/transformers")');
+    return await transformers.pipeline(task, model);
+  }
+}
+
 export class EmbeddingGenerator {
   private config: EmbeddingConfig;
   private embeddingPipeline: any = null;
+  private pipelineProvider: PipelineProvider;
 
-  constructor(config: EmbeddingConfig) {
+  constructor(config: EmbeddingConfig, pipelineProvider?: PipelineProvider) {
     this.config = config;
+    this.pipelineProvider = pipelineProvider || new TransformersPipelineProvider();
   }
 
   async initialize(): Promise<void> {
     try {
-      // Skip initialization in test environments
-      if (process.env.NODE_ENV === 'test' || process.env.CI) {
-        console.log('Skipping embedding model initialization in test environment');
-        this.embeddingPipeline = {
-          // Mock pipeline for testing
-          __mock: true
-        };
-        return;
-      }
-
-      // Use eval to bypass TypeScript's import compilation
-      const transformers = await eval('import("@xenova/transformers")');
-      this.embeddingPipeline = await transformers.pipeline(
+      this.embeddingPipeline = await this.pipelineProvider.createPipeline(
         'feature-extraction',
         this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
       );
@@ -93,13 +95,6 @@ export class EmbeddingGenerator {
         throw new Error('Embedding pipeline not initialized');
       }
       
-      // Return mock embedding in test environments
-      if (this.embeddingPipeline.__mock) {
-        // Generate a deterministic mock embedding based on text hash
-        const hash = this.simpleHash(text);
-        return Array.from({ length: 384 }, (_, i) => Math.sin(hash + i) * 0.1);
-      }
-      
       const result = await this.embeddingPipeline(text);
       // Convert to flat array if needed
       return Array.isArray(result.data) ? result.data : Array.from(result.data);
@@ -107,16 +102,6 @@ export class EmbeddingGenerator {
       console.error('Failed to generate embedding:', error);
       throw error;
     }
-  }
-
-  private simpleHash(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash;
   }
 
   createContext(row: Record<string, any>, combination: ColumnCombination): string {
