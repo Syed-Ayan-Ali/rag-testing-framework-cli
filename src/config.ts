@@ -91,13 +91,13 @@ export class ConfigManager {
         return {
           provider: 'openai',
           apiKey: process.env.OPENAI_API_KEY || '',
-          model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo'
+          model: process.env.OPENAI_MODEL || 'gpt-4o'
         };
       case 'gemini':
         return {
           provider: 'gemini',
           apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '',
-          model: process.env.GEMINI_MODEL || 'gemini-pro'
+          model: process.env.GEMINI_MODEL || 'gemini-1.5-flash'
         };
       case 'anthropic':
         return {
