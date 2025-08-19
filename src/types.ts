@@ -4,8 +4,35 @@ export interface DatabaseConfig {
 }
 
 export interface EmbeddingConfig {
-  model: 'local';
+  model: 'local' | 'openai' | 'gemini';
   localModel?: string;
+  openaiApiKey?: string;
+  openaiModel?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
+}
+
+export interface LLMConfig {
+  provider: 'openai' | 'gemini' | 'anthropic';
+  apiKey: string;
+  model: string;
+}
+
+export interface EmbeddingTask {
+  tableName: string;
+  columns: string[];
+  customOrder?: boolean;
+  embeddingColumn: string;
+  batchSize: number;
+}
+
+export interface ColumnPopulationTask {
+  tableName: string;
+  sourceColumn: string;
+  targetColumn: string;
+  llmProvider: LLMConfig;
+  prompt: string;
+  batchSize: number;
 }
 
 export interface ColumnCombination {

@@ -6,10 +6,12 @@ A lightweight CLI tool for testing RAG (Retrieval-Augmented Generation) systems 
 
 - **Column Combination Testing**: Automatically tests different combinations of database columns for optimal embedding generation
 - **Multiple Metrics**: Supports both general similarity metrics and specialized BRDR (Banking Regulation Document Retrieval) metrics
-- **Local Embeddings**: Uses Hugging Face Transformers models locally (no API keys required)
+- **Multi-Provider Embeddings**: Supports local models (Hugging Face), OpenAI, and Gemini embedding providers
+- **LLM-Powered Content Generation**: Automatically populate database columns using OpenAI, Gemini, or Anthropic LLMs
 - **Interactive CLI**: User-friendly command-line interface with guided setup
 - **Configurable**: Easy configuration management with file and environment variable support
 - **Database Integration**: Works with any Supabase-compatible PostgreSQL database
+- **Dynamic Schema Detection**: Automatically detects column types and optimizes data formatting
 
 ## 📦 Installation
 
@@ -68,6 +70,18 @@ Command-line mode:
 rag-test test --table my_table --columns "title,content,summary" --query question --answer answer --metric similarity
 ```
 
+### 5. Generate embeddings for your data
+
+```bash
+rag-test generate-embeddings --table documents --columns "title,content" --embedding-column embedding_vector
+```
+
+### 6. Populate columns with AI-generated content
+
+```bash
+rag-test populate-column --table documents --source-column content --target-column tags --prompt-type tags
+```
+
 ## 📖 Usage
 
 ### Configuration
@@ -79,7 +93,16 @@ The tool can be configured in multiple ways (in order of priority):
    # In your project's .env file:
    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-   EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2  # optional
+   
+   # Optional: Embedding providers
+   EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2  # local model
+   OPENAI_API_KEY=your-openai-key
+   GEMINI_API_KEY=your-gemini-key
+   
+   # Optional: LLM providers
+   OPENAI_API_KEY=your-openai-key
+   GEMINI_API_KEY=your-gemini-key
+   ANTHROPIC_API_KEY=your-anthropic-key
    ```
 
 2. **Interactive setup**: `rag-test configure`
@@ -116,6 +139,39 @@ Run RAG testing experiment.
 - `-r, --ratio <number>`: Training ratio (0-1, default: 0.8)
 - `-n, --name <name>`: Test name
 - `-l, --limit <number>`: Max combinations to test (default: 20)
+
+#### `generate-embeddings [options]`
+Generate embeddings for table rows using different embedding providers.
+
+**Options:**
+- `-t, --table <table>`: Table name
+- `-c, --columns <columns>`: Comma-separated list of columns to combine
+- `--custom-order`: Use exact column order (default: alphabetical)
+- `-e, --embedding-column <column>`: Column to store embeddings
+- `-b, --batch-size <size>`: Batch size for processing (default: 50)
+- `-p, --provider <provider>`: Embedding provider (local, openai, gemini)
+
+**Example:**
+```bash
+rag-test generate-embeddings -t documents -c "title,content" -e embedding_vector -p openai
+```
+
+#### `populate-column [options]`
+Use LLM to populate empty columns based on other columns.
+
+**Options:**
+- `-t, --table <table>`: Table name
+- `-s, --source-column <column>`: Source column to base content on
+- `-c, --target-column <column>`: Target column to populate
+- `-p, --provider <provider>`: LLM provider (openai, gemini, anthropic)
+- `--prompt-type <type>`: Predefined prompt type (tags, description, summary, keywords)
+- `--custom-prompt <prompt>`: Custom prompt for LLM
+- `-b, --batch-size <size>`: Batch size for processing (default: 10)
+
+**Example:**
+```bash
+rag-test populate-column -t documents -s content -c tags --prompt-type tags -p openai
+```
 
 ### Example Workflow
 
@@ -158,11 +214,20 @@ Specialized metric for banking regulation documents:
 - Contextual relevance (embedding similarity)
 - Domain-specific weighting
 
-## 🧠 Supported Embedding Models
+## 🧠 Supported Providers
 
-- `Xenova/all-MiniLM-L6-v2` (Default, lightweight)
-- `Xenova/all-mpnet-base-v2` (Better quality, larger)
-- `Xenova/multi-qa-MiniLM-L6-cos-v1` (Q&A optimized)
+### Embedding Providers
+- **Local Models** (Default, no API key required):
+  - `Xenova/all-MiniLM-L6-v2` (Lightweight, fast)
+  - `Xenova/all-mpnet-base-v2` (Better quality, larger)
+  - `Xenova/multi-qa-MiniLM-L6-cos-v1` (Q&A optimized)
+- **OpenAI**: text-embedding-3-small, text-embedding-3-large
+- **Gemini**: embedding-001
+
+### LLM Providers  
+- **OpenAI**: GPT-3.5-turbo, GPT-4, GPT-4-turbo
+- **Gemini**: gemini-pro, gemini-pro-vision
+- **Anthropic**: Claude-3-sonnet, Claude-3-haiku
 
 ## 📊 Output
 

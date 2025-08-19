@@ -103,4 +103,116 @@ export class DatabaseConnection {
   isConnectionActive(): boolean {
     return this.isConnected;
   }
+
+  async getColumnDataType(tableName: string, columnName: string): Promise<string | null> {
+    try {
+      const { data, error } = await this.supabase
+        .rpc('get_column_data_type', { 
+          table_name_param: tableName, 
+          column_name_param: columnName 
+        });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error(`Failed to get column data type for ${tableName}.${columnName}:`, error);
+      return null;
+    }
+  }
+
+  async updateRowEmbedding(
+    tableName: string, 
+    rowId: any, 
+    embeddingColumn: string, 
+    embedding: number[]
+  ): Promise<boolean> {
+    try {
+      const { error } = await this.supabase
+        .from(tableName)
+        .update({ [embeddingColumn]: embedding })
+        .eq('id', rowId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error(`Failed to update embedding for row ${rowId}:`, error);
+      return false;
+    }
+  }
+
+  async updateRowColumn(
+    tableName: string, 
+    rowId: any, 
+    columnName: string, 
+    value: any
+  ): Promise<boolean> {
+    try {
+      const { error } = await this.supabase
+        .from(tableName)
+        .update({ [columnName]: value })
+        .eq('id', rowId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error(`Failed to update column ${columnName} for row ${rowId}:`, error);
+      return false;
+    }
+  }
+
+  async getRowsWithoutEmbeddings(
+    tableName: string, 
+    embeddingColumn: string, 
+    sourceColumns: string[],
+    limit: number = 100
+  ): Promise<any[]> {
+    try {
+      const selectColumns = ['id', ...sourceColumns];
+      const { data, error } = await this.supabase
+        .from(tableName)
+        .select(selectColumns.join(','))
+        .is(embeddingColumn, null)
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error(`Failed to get rows without embeddings:`, error);
+      return [];
+    }
+  }
+
+  async getRowsWithEmptyColumn(
+    tableName: string, 
+    targetColumn: string, 
+    sourceColumns: string[],
+    limit: number = 100
+  ): Promise<any[]> {
+    try {
+      const selectColumns = ['id', ...sourceColumns, targetColumn];
+      const { data, error } = await this.supabase
+        .from(tableName)
+        .select(selectColumns.join(','))
+        .or(`${targetColumn}.is.null,${targetColumn}.eq.""`)
+        .limit(limit);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error(`Failed to get rows with empty column:`, error);
+      return [];
+    }
+  }
+
+  async checkColumnExists(tableName: string, columnName: string): Promise<boolean> {
+    try {
+      const tableInfo = await this.getTableInfo(tableName);
+      if (!tableInfo) return false;
+      
+      return tableInfo.columns.some(col => col.column_name === columnName);
+    } catch (error) {
+      console.error(`Failed to check if column exists:`, error);
+      return false;
+    }
+  }
 }

@@ -455,6 +455,327 @@ function displayResults(results: ExperimentResults) {
   console.log(resultsTable.toString());
 }
 
+// Generate embeddings command
+program
+  .command('generate-embeddings')
+  .description('Generate embeddings for table rows')
+  .option('-t, --table <table>', 'Table name')
+  .option('-c, --columns <columns>', 'Comma-separated list of columns to combine')
+  .option('--custom-order', 'Use exact column order (default: alphabetical)')
+  .option('-e, --embedding-column <column>', 'Column to store embeddings')
+  .option('-b, --batch-size <size>', 'Batch size for processing', '50')
+  .option('-p, --provider <provider>', 'Embedding provider (local, openai, gemini)')
+  .action(async (options) => {
+    const spinner = ora('Loading configuration...').start();
+    
+    try {
+      const configManager = new ConfigManager();
+      const config = await configManager.loadConfig();
+      
+      const { isValid, errors } = configManager.validateConfig(config);
+      if (!isValid) {
+        spinner.fail('❌ Configuration invalid:');
+        errors.forEach(error => console.log(chalk.red(`  • ${error}`)));
+        return;
+      }
+
+      const database = new DatabaseConnection(config.database);
+      spinner.text = 'Testing database connection...';
+      
+      if (!(await database.testConnection())) {
+        spinner.fail(chalk.red('❌ Database connection failed'));
+        return;
+      }
+
+      spinner.stop();
+
+      // Interactive prompts for missing options
+      const availableProviders = configManager.getAvailableProviders();
+      
+      // Get table name
+      let tableName = options.table;
+      if (!tableName) {
+        const tables = await database.getTables();
+        if (tables.length === 0) {
+          console.log(chalk.red('❌ No tables found in database'));
+          return;
+        }
+
+        const { selectedTable } = await inquirer.prompt([{
+          type: 'list',
+          name: 'selectedTable',
+          message: 'Select a table:',
+          choices: tables
+        }]);
+        tableName = selectedTable;
+      }
+
+      // Get table info
+      const tableInfo = await database.getTableInfo(tableName);
+      if (!tableInfo) {
+        console.log(chalk.red(`❌ Table '${tableName}' not found`));
+        return;
+      }
+
+      // Get columns
+      let columns: string[] = [];
+      if (options.columns) {
+        columns = options.columns.split(',').map((c: string) => c.trim());
+      } else {
+        const { selectedColumns } = await inquirer.prompt([{
+          type: 'checkbox',
+          name: 'selectedColumns',
+          message: 'Select columns to combine for embeddings:',
+          choices: tableInfo.columns
+            .filter(col => !col.column_name.includes('embedding') && col.column_name !== 'id')
+            .map(col => ({
+              name: `${col.column_name} (${col.data_type})`,
+              value: col.column_name
+            })),
+          validate: (answer: string[]) => answer.length > 0 || 'Please select at least one column'
+        }]);
+        columns = selectedColumns;
+      }
+
+      // Get embedding column
+      let embeddingColumn = options.embeddingColumn;
+      if (!embeddingColumn) {
+        const embeddingColumns = tableInfo.columns
+          .filter(col => col.data_type.includes('vector') || col.column_name.includes('embedding'))
+          .map(col => col.column_name);
+
+        if (embeddingColumns.length === 0) {
+          console.log(chalk.red('❌ No embedding columns found in table'));
+          return;
+        }
+
+        const { selectedEmbeddingColumn } = await inquirer.prompt([{
+          type: 'list',
+          name: 'selectedEmbeddingColumn',
+          message: 'Select embedding column:',
+          choices: embeddingColumns
+        }]);
+        embeddingColumn = selectedEmbeddingColumn;
+      }
+
+      // Get embedding provider
+      let provider = options.provider;
+      if (!provider && availableProviders.embedding.length > 1) {
+        const { selectedProvider } = await inquirer.prompt([{
+          type: 'list',
+          name: 'selectedProvider',
+          message: 'Select embedding provider:',
+          choices: availableProviders.embedding.map(p => ({
+            name: p === 'local' ? 'Local (Xenova/transformers)' : p.toUpperCase(),
+            value: p
+          }))
+        }]);
+        provider = selectedProvider;
+      } else {
+        provider = provider || availableProviders.embedding[0];
+      }
+
+      // Create embedding service
+      const embeddingConfig = configManager.createEmbeddingConfig(provider);
+      const { EmbeddingService } = await import('./embedding-service');
+      const embeddingService = new EmbeddingService(database, embeddingConfig);
+      
+      await embeddingService.initialize();
+
+      const task = {
+        tableName,
+        columns,
+        customOrder: options.customOrder || false,
+        embeddingColumn,
+        batchSize: parseInt(options.batchSize) || 50
+      };
+
+      console.log(chalk.blue('\n📊 Embedding Generation Task:'));
+      console.log(`  Table: ${tableName}`);
+      console.log(`  Columns: ${columns.join(', ')}`);
+      console.log(`  Embedding Column: ${embeddingColumn}`);
+      console.log(`  Provider: ${provider}`);
+      console.log(`  Batch Size: ${task.batchSize}\n`);
+
+      await embeddingService.generateEmbeddings(task);
+
+    } catch (error: any) {
+      spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
+    }
+  });
+
+// Populate column command
+program
+  .command('populate-column')
+  .description('Use LLM to populate empty columns based on other columns')
+  .option('-t, --table <table>', 'Table name')
+  .option('-s, --source-column <column>', 'Source column to base content on')
+  .option('-c, --target-column <column>', 'Target column to populate')
+  .option('-p, --provider <provider>', 'LLM provider (openai, gemini, anthropic)')
+  .option('--prompt-type <type>', 'Predefined prompt type (tags, description, summary, keywords)', 'custom')
+  .option('--custom-prompt <prompt>', 'Custom prompt for LLM')
+  .option('-b, --batch-size <size>', 'Batch size for processing', '10')
+  .action(async (options) => {
+    const spinner = ora('Loading configuration...').start();
+    
+    try {
+      const configManager = new ConfigManager();
+      const config = await configManager.loadConfig();
+      
+      const { isValid, errors } = configManager.validateConfig(config);
+      if (!isValid) {
+        spinner.fail('❌ Configuration invalid:');
+        errors.forEach(error => console.log(chalk.red(`  • ${error}`)));
+        return;
+      }
+
+      const database = new DatabaseConnection(config.database);
+      spinner.text = 'Testing database connection...';
+      
+      if (!(await database.testConnection())) {
+        spinner.fail(chalk.red('❌ Database connection failed'));
+        return;
+      }
+
+      spinner.stop();
+
+      // Interactive prompts for missing options
+      const availableProviders = configManager.getAvailableProviders();
+      
+      if (availableProviders.llm.length === 0) {
+        console.log(chalk.red('❌ No LLM providers found. Please set API keys in your .env file:'));
+        console.log('  • OPENAI_API_KEY for OpenAI');
+        console.log('  • GEMINI_API_KEY or GOOGLE_AI_API_KEY for Gemini');
+        console.log('  • ANTHROPIC_API_KEY for Anthropic');
+        return;
+      }
+
+      // Get table name
+      let tableName = options.table;
+      if (!tableName) {
+        const tables = await database.getTables();
+        if (tables.length === 0) {
+          console.log(chalk.red('❌ No tables found in database'));
+          return;
+        }
+
+        const { selectedTable } = await inquirer.prompt([{
+          type: 'list',
+          name: 'selectedTable',
+          message: 'Select a table:',
+          choices: tables
+        }]);
+        tableName = selectedTable;
+      }
+
+      // Get table info
+      const tableInfo = await database.getTableInfo(tableName);
+      if (!tableInfo) {
+        console.log(chalk.red(`❌ Table '${tableName}' not found`));
+        return;
+      }
+
+      // Get source column
+      let sourceColumn = options.sourceColumn;
+      if (!sourceColumn) {
+        const { selectedSourceColumn } = await inquirer.prompt([{
+          type: 'list',
+          name: 'selectedSourceColumn',
+          message: 'Select source column (content to base generation on):',
+          choices: tableInfo.columns
+            .filter(col => col.column_name !== 'id')
+            .map(col => ({
+              name: `${col.column_name} (${col.data_type})`,
+              value: col.column_name
+            }))
+        }]);
+        sourceColumn = selectedSourceColumn;
+      }
+
+      // Get target column
+      let targetColumn = options.targetColumn;
+      if (!targetColumn) {
+        const { selectedTargetColumn } = await inquirer.prompt([{
+          type: 'list',
+          name: 'selectedTargetColumn',
+          message: 'Select target column (to populate):',
+          choices: tableInfo.columns
+            .filter(col => col.column_name !== 'id' && col.column_name !== sourceColumn)
+            .map(col => ({
+              name: `${col.column_name} (${col.data_type})`,
+              value: col.column_name
+            }))
+        }]);
+        targetColumn = selectedTargetColumn;
+      }
+
+      // Get LLM provider
+      let provider = options.provider;
+      if (!provider && availableProviders.llm.length > 1) {
+        const { selectedProvider } = await inquirer.prompt([{
+          type: 'list',
+          name: 'selectedProvider',
+          message: 'Select LLM provider:',
+          choices: availableProviders.llm.map(p => ({
+            name: p.toUpperCase(),
+            value: p
+          }))
+        }]);
+        provider = selectedProvider;
+      } else {
+        provider = provider || availableProviders.llm[0];
+      }
+
+      // Get prompt
+      let prompt = options.customPrompt;
+      const promptType = options.promptType;
+      
+      if (!prompt) {
+        if (promptType === 'custom') {
+          const { customPrompt } = await inquirer.prompt([{
+            type: 'input',
+            name: 'customPrompt',
+            message: 'Enter custom prompt for LLM:',
+            default: 'Process the following content:'
+          }]);
+          prompt = customPrompt;
+        } else {
+          const { LLMService } = await import('./llm-service');
+          prompt = LLMService.createPrompt(promptType as any);
+        }
+      }
+
+      // Create LLM service
+      const llmConfig = configManager.createLLMConfig(provider);
+      const { LLMService } = await import('./llm-service');
+      const llmService = new LLMService(database, llmConfig);
+      
+      await llmService.initialize();
+
+      const task = {
+        tableName,
+        sourceColumn,
+        targetColumn,
+        llmProvider: llmConfig,
+        prompt,
+        batchSize: parseInt(options.batchSize) || 10
+      };
+
+      console.log(chalk.blue('\n🤖 Column Population Task:'));
+      console.log(`  Table: ${tableName}`);
+      console.log(`  Source Column: ${sourceColumn}`);
+      console.log(`  Target Column: ${targetColumn}`);
+      console.log(`  Provider: ${provider}`);
+      console.log(`  Prompt Type: ${promptType}`);
+      console.log(`  Batch Size: ${task.batchSize}\n`);
+
+      await llmService.populateColumn(task);
+
+    } catch (error: any) {
+      spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
+    }
+  });
+
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {
   console.error(chalk.red(`\n💥 Uncaught Exception: ${error.message}`));

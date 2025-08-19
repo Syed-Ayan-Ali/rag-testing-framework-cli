@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { config as dotenvConfig } from 'dotenv';
-import { CLIConfig, DatabaseConfig, EmbeddingConfig } from './types';
+import { CLIConfig, DatabaseConfig, EmbeddingConfig, LLMConfig } from './types';
+import { ProviderManager } from './providers';
 
 export class ConfigManager {
   private configPath: string;
@@ -54,6 +55,58 @@ export class ConfigManager {
       console.log(`✅ Configuration saved to ${this.configPath}`);
     } catch (error) {
       throw new Error(`Failed to save config: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  getAvailableProviders(): { embedding: string[]; llm: string[] } {
+    return ProviderManager.detectAvailableProviders();
+  }
+
+  createEmbeddingConfig(provider: string): EmbeddingConfig {
+    const config: EmbeddingConfig = {
+      model: provider as 'local' | 'openai' | 'gemini'
+    };
+
+    switch (provider) {
+      case 'openai':
+        config.openaiApiKey = process.env.OPENAI_API_KEY;
+        config.openaiModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
+        break;
+      case 'gemini':
+        config.geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
+        config.geminiModel = process.env.GEMINI_EMBEDDING_MODEL || 'embedding-001';
+        break;
+      case 'local':
+      default:
+        config.localModel = process.env.LOCAL_EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2';
+        break;
+    }
+
+    return config;
+  }
+
+  createLLMConfig(provider: string): LLMConfig {
+    switch (provider) {
+      case 'openai':
+        return {
+          provider: 'openai',
+          apiKey: process.env.OPENAI_API_KEY || '',
+          model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo'
+        };
+      case 'gemini':
+        return {
+          provider: 'gemini',
+          apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '',
+          model: process.env.GEMINI_MODEL || 'gemini-pro'
+        };
+      case 'anthropic':
+        return {
+          provider: 'anthropic',
+          apiKey: process.env.ANTHROPIC_API_KEY || '',
+          model: process.env.ANTHROPIC_MODEL || 'claude-3-sonnet-20240229'
+        };
+      default:
+        throw new Error(`Unsupported LLM provider: ${provider}`);
     }
   }
 
