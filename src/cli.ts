@@ -736,7 +736,7 @@ program
             type: 'input',
             name: 'customPrompt',
             message: 'Enter custom prompt for LLM:',
-            default: 'Process the following content:'
+            default: 'generate a list of 5 queries in json format, in the format: {[q1: "", q2:"", ...]}, using the given content. The queries will be used to fill a column in a database table called "nlp_chunk_description." This column will contain a list of queries that the user may ask for which the content is the answer. Since the content is a chunk, it may be that queries can only be answered by combining different chunks together so even though the query cannot be answered ocompletely by the content, the query should be added to the list. An example fo this would be "What are the basel iii requirements for tier 1 banks in hong kong?". This query cannot be answered using one chunk. It needs to be answered by combining different chunks together. The query should be added to the list of every chunk that is relevantto basel, hong kong, and tier 1 banks and other relevant keywords.'
           }]);
           prompt = customPrompt;
         } else {
