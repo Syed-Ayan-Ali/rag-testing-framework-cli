@@ -8,7 +8,7 @@ describe('EmbeddingGenerator', () => {
   
   const testConfig: EmbeddingConfig = {
     model: 'local',
-    localModel: 'Xenova/all-MiniLM-L6-v2'
+    localModel: 'Xenova/all-MiniLM-L6-v2-small'
   };
 
   beforeEach(() => {
@@ -28,7 +28,7 @@ describe('EmbeddingGenerator', () => {
     it('should initialize the embedding pipeline successfully', async () => {
       await embeddingGenerator.initialize();
       
-      expect(mockPipelineProvider.createPipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+      expect(mockPipelineProvider.createPipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2-small');
     });
 
     it('should throw error if initialization fails', async () => {
@@ -43,7 +43,7 @@ describe('EmbeddingGenerator', () => {
       
       await generator.initialize();
       
-      expect(mockPipelineProvider.createPipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+      expect(mockPipelineProvider.createPipeline).toHaveBeenCalledWith('feature-extraction', 'Xenova/all-MiniLM-L6-v2-small');
     });
   });
 
