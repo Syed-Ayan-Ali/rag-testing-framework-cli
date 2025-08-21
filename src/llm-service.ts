@@ -63,10 +63,13 @@ export class LLMService {
         }
 
         spinner.text = `Processing batch of ${rows.length} rows...`;
+        console.log(chalk.blue(`\n🔄 Processing batch ${Math.floor(totalProcessed / task.batchSize) + 1} (${rows.length} rows)`));
+        console.log(chalk.gray('─'.repeat(50)));
 
         const results = await this.processBatch(rows, task, targetDataType);
         
         spinner.text = `Updating database with ${results.length} generated values...`;
+        console.log(chalk.green(`✅ Generated content for ${results.length} rows`));
         
         for (const result of results) {
           await this.database.updateRowColumn(
@@ -79,6 +82,8 @@ export class LLMService {
 
         totalProcessed += results.length;
         spinner.text = `Processed ${totalProcessed} rows...`;
+        console.log(chalk.gray('─'.repeat(50)));
+        console.log('');
 
         if (rows.length < task.batchSize) {
           hasMoreRows = false;
@@ -86,6 +91,14 @@ export class LLMService {
       }
 
       spinner.succeed(chalk.green(`✅ Successfully populated ${totalProcessed} rows in column '${task.targetColumn}'`));
+      console.log(chalk.blue(`\n📊 Summary:`));
+      console.log(chalk.gray(`   • Table: ${task.tableName}`));
+      console.log(chalk.gray(`   • Source column: ${task.sourceColumn}`));
+      console.log(chalk.gray(`   • Target column: ${task.targetColumn}`));
+      console.log(chalk.gray(`   • Total rows processed: ${totalProcessed}`));
+      console.log(chalk.gray(`   • LLM provider: ${this.config.provider}`));
+      console.log(chalk.gray(`   • Model: ${this.config.model}`));
+      console.log('');
 
     } catch (error: any) {
       spinner.fail(chalk.red(`❌ Column population failed: ${error.message}`));
@@ -108,8 +121,20 @@ export class LLMService {
           continue;
         }
 
+        // Print the source column text for each row being processed
+        console.log(chalk.cyan(`📝 Processing row ${row.id}:`));
+        console.log(chalk.gray(`Source (${task.sourceColumn}): ${sourceValue.substring(0, 200)}${sourceValue.length > 200 ? '...' : ''}`));
+        console.log(chalk.blue(`   🔄 Calling LLM (${this.config.provider}/${this.config.model})...`));
+        console.log('');
+
         const generatedText = await this.llmProvider.generateText(task.prompt, sourceValue);
         const formattedValue = this.formatValueForDatabase(generatedText, targetDataType);
+        
+        // Show the generated content
+        console.log(chalk.yellow(`🤖 Generated content:`));
+        console.log(chalk.gray(`   ${generatedText.substring(0, 150)}${generatedText.length > 150 ? '...' : ''}`));
+        console.log(chalk.green(`   ✅ Formatted for ${targetDataType || 'text'} column`));
+        console.log('');
         
         results.push({
           id: row.id,
