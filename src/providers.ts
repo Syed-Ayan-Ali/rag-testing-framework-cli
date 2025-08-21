@@ -184,7 +184,7 @@ export class GeminiLLMProvider implements LLMProvider {
 
   async generateText(prompt: string, context: string): Promise<string> {
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.config.model || 'gemini-1.5-flash'}:generateContent?key=${this.config.apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.config.model || 'gemma-3-27b-it'}:generateContent?key=${this.config.apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
