@@ -42,7 +42,7 @@ export class EmbeddingGenerator {
     try {
       this.embeddingPipeline = await this.pipelineProvider.createPipeline(
         'feature-extraction',
-        this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
+        this.config.localModel || 'Xenova/all-MiniLM-L6-v2-small'
       );
     } catch (error) {
       console.error('Failed to initialize embedding model:', error);

@@ -215,4 +215,35 @@ export class DatabaseConnection {
       return false;
     }
   }
+
+  async getColumnDataCount(tableName: string, columnName: string): Promise<number> {
+    try {
+      const { count, error } = await this.supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true })
+        .not(columnName, 'is', null)
+        .neq(columnName, '');
+
+      if (error) throw error;
+      return count || 0;
+    } catch (error) {
+      console.error(`Failed to get column data count:`, error);
+      return 0;
+    }
+  }
+
+  async getEmptyColumnCount(tableName: string, columnName: string): Promise<number> {
+    try {
+      const { count, error } = await this.supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true })
+        .or(`${columnName}.is.null,${columnName}.eq.""`);
+
+      if (error) throw error;
+      return count || 0;
+    } catch (error) {
+      console.error(`Failed to get empty column count:`, error);
+      return 0;
+    }
+  }
 }

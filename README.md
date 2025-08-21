@@ -231,11 +231,15 @@ Specialized metric for banking regulation documents:
 
 ### Embedding Providers
 - **Local Models** (Default, no API key required):
-  - `Xenova/all-MiniLM-L6-v2` (Lightweight, fast)
-  - `Xenova/all-mpnet-base-v2` (Better quality, larger)
-  - `Xenova/multi-qa-MiniLM-L6-cos-v1` (Q&A optimized)
-- **OpenAI**: text-embedding-3-small, text-embedding-3-large
-- **Gemini**: embedding-001
+  - `Xenova/all-MiniLM-L6-v2-small` (Default, ~384 dimensions) ⭐ **Recommended for Supabase**
+  - `Xenova/all-MiniLM-L6-v2` (~384 dimensions)
+  - `Xenova/all-MiniLM-L6-v2-base` (~384 dimensions)
+  - `Xenova/all-mpnet-base-v2` (~768 dimensions)
+  - `Xenova/multi-qa-MiniLM-L6-cos-v1` (~384 dimensions, Q&A optimized)
+- **OpenAI**: text-embedding-3-small (1536 dimensions), text-embedding-3-large (3072 dimensions)
+- **Gemini**: embedding-001 (768 dimensions)
+
+> **Note**: Supabase has a 16000 dimension limit for vector columns. The default local model produces 384-dimensional embeddings, which is well within this limit and provides excellent performance.
 
 ### LLM Providers  
 - **OpenAI**: GPT-3.5-turbo, GPT-4, GPT-4-turbo
@@ -273,7 +277,7 @@ Your database should have:
   },
   "embedding": {
     "model": "local",
-    "localModel": "Xenova/all-MiniLM-L6-v2"
+    "localModel": "Xenova/all-MiniLM-L6-v2-small"
   },
   "outputPath": "./rag-test-results"
 }

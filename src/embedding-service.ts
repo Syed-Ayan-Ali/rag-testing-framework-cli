@@ -3,6 +3,7 @@ import { EmbeddingProvider, ProviderManager } from './providers';
 import { EmbeddingConfig, EmbeddingTask } from './types';
 import ora from 'ora';
 import chalk from 'chalk';
+import * as readline from 'readline';
 
 export class EmbeddingService {
   private database: DatabaseConnection;
@@ -46,29 +47,78 @@ export class EmbeddingService {
         throw new Error(`Embedding column '${task.embeddingColumn}' not found in table`);
       }
 
-      spinner.text = 'Finding rows without embeddings...';
-      let totalProcessed = 0;
-      let hasMoreRows = true;
+      // Check if embedding column already has data and warn user
+      const existingEmbeddingCount = await this.database.getColumnDataCount(task.tableName, task.embeddingColumn);
+      if (existingEmbeddingCount > 0) {
+        spinner.stop();
+        console.log(chalk.yellow(`⚠️  Warning: Column '${task.embeddingColumn}' already contains embeddings in ${existingEmbeddingCount} rows!`));
+        console.log(chalk.yellow(`   This operation will overwrite existing embeddings.`));
+        
+        const confirm = await this.askUserConfirmation(
+          `Are you sure you want to continue and potentially overwrite existing embeddings in '${task.embeddingColumn}'? (yes/no): `
+        );
+        
+        if (!confirm) {
+          console.log(chalk.blue('Operation cancelled by user.'));
+          return;
+        }
+        
+        spinner.start('Continuing with embedding generation...');
+      }
 
-      while (hasMoreRows) {
+      // Get total count of rows that need processing
+      spinner.text = 'Counting rows that need processing...';
+      const totalRowsToProcess = await this.database.getEmptyColumnCount(
+        task.tableName,
+        task.embeddingColumn
+      );
+
+      if (totalRowsToProcess === 0) {
+        spinner.succeed(chalk.green(`✅ Column '${task.embeddingColumn}' already has all embeddings generated!`));
+        return;
+      }
+
+      spinner.text = `Found ${totalRowsToProcess} rows to process...`;
+      console.log(chalk.blue(`\n📊 Total rows to process: ${totalRowsToProcess}`));
+      console.log(chalk.gray('─'.repeat(50)));
+
+      let totalProcessed = 0;
+      let processedRowIds = new Set(); // Track processed rows to avoid duplicates
+
+      // Process rows in batches but track each row individually
+      while (totalProcessed < totalRowsToProcess) {
+        const remainingRows = totalRowsToProcess - totalProcessed;
+        const currentBatchSize = Math.min(task.batchSize, remainingRows);
+        
+        // Get next batch of unprocessed rows
         const rows = await this.database.getRowsWithoutEmbeddings(
           task.tableName,
           task.embeddingColumn,
           task.columns,
-          task.batchSize
+          currentBatchSize
         );
 
         if (rows.length === 0) {
-          hasMoreRows = false;
-          break;
+          break; // No more rows to process
         }
 
-        spinner.text = `Processing batch of ${rows.length} rows...`;
+        // Filter out rows that have already been processed
+        const unprocessedRows = rows.filter(row => !processedRowIds.has(row.id));
+        
+        if (unprocessedRows.length === 0) {
+          break; // All rows in this batch were already processed
+        }
 
-        const results = await this.processBatch(rows, task);
+        spinner.text = `Processing batch ${Math.floor(totalProcessed / task.batchSize) + 1} (${unprocessedRows.length} rows)...`;
+        console.log(chalk.blue(`\n🔄 Processing batch ${Math.floor(totalProcessed / task.batchSize) + 1} (${unprocessedRows.length} rows)`));
+        console.log(chalk.gray('─'.repeat(50)));
+
+        const results = await this.processBatch(unprocessedRows, task);
         
         spinner.text = `Updating database with ${results.length} embeddings...`;
+        console.log(chalk.green(`✅ Generated embeddings for ${results.length} rows`));
         
+        // Update database and track processed rows
         for (const result of results) {
           await this.database.updateRowEmbedding(
             task.tableName,
@@ -76,17 +126,31 @@ export class EmbeddingService {
             task.embeddingColumn,
             result.embedding
           );
+          processedRowIds.add(result.id);
         }
 
         totalProcessed += results.length;
-        spinner.text = `Processed ${totalProcessed} rows...`;
+        const progressPercentage = Math.round((totalProcessed / totalRowsToProcess) * 100);
+        spinner.text = `Processed ${totalProcessed}/${totalRowsToProcess} rows (${progressPercentage}%)...`;
+        console.log(chalk.gray('─'.repeat(50)));
+        console.log('');
 
-        if (rows.length < task.batchSize) {
-          hasMoreRows = false;
+        // Add delay between batches to respect API rate limits
+        if (totalProcessed < totalRowsToProcess) {
+          await this.delay(500);
         }
       }
 
       spinner.succeed(chalk.green(`✅ Successfully generated embeddings for ${totalProcessed} rows`));
+      console.log(chalk.blue(`\n📊 Summary:`));
+      console.log(chalk.gray(`   • Table: ${task.tableName}`));
+      console.log(chalk.gray(`   • Source columns: ${task.columns.join(', ')}`));
+      console.log(chalk.gray(`   • Embedding column: ${task.embeddingColumn}`));
+      console.log(chalk.gray(`   • Total rows processed: ${totalProcessed}`));
+      console.log(chalk.gray(`   • Total rows in table: ${totalRowsToProcess + (await this.database.getColumnDataCount(task.tableName, task.embeddingColumn))}`));
+      console.log(chalk.gray(`   • Embedding provider: ${this.config.model}`));
+      console.log(chalk.gray(`   • Batch size used: ${task.batchSize}`));
+      console.log('');
 
     } catch (error: any) {
       spinner.fail(chalk.red(`❌ Embedding generation failed: ${error.message}`));
@@ -103,14 +167,38 @@ export class EmbeddingService {
     for (const row of rows) {
       try {
         const text = this.combineColumns(row, task.columns, task.customOrder);
+        
+        if (!text.trim()) {
+          console.warn(`Skipping row ${row.id}: no valid text generated from columns`);
+          continue;
+        }
+
+        // Print the source text for each row being processed
+        console.log(chalk.cyan(`📝 Processing row ${row.id}:`));
+        console.log(chalk.gray(`Combined text: ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`));
+        console.log(chalk.blue(`   🔄 Generating embedding (${this.config.model})...`));
+
         const embedding = await this.embeddingProvider.generateEmbedding(text);
+        
+        // Warn if embedding is too large for Supabase
+        if (embedding.length > 16000) {
+          console.log(chalk.red(`❌ ERROR: Embedding has ${embedding.length} dimensions, which exceeds Supabase's 16000 limit!`));
+          console.log(chalk.yellow(`   Consider using a smaller model like 'Xenova/all-MiniLM-L6-v2-small' or 'Xenova/all-MiniLM-L6-v2'`));
+          throw new Error(`Embedding dimension ${embedding.length} exceeds Supabase limit of 16000`);
+        }
+        
+        console.log(chalk.green(`   ✅ Generated embedding: ${embedding.length} dimensions`));
+        console.log('');
         
         results.push({
           id: row.id,
           embedding
         });
+
+        // Add small delay to respect API rate limits
+        await this.delay(100);
       } catch (error: any) {
-        console.warn(`Failed to generate embedding for row ${row.id}:`, error.message);
+        console.warn(chalk.red(`Failed to generate embedding for row ${row.id}: ${error.message}`));
         // Continue with other rows
       }
     }
@@ -145,6 +233,25 @@ export class EmbeddingService {
     }
     
     return String(value).trim();
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  private async askUserConfirmation(prompt: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    return new Promise((resolve) => {
+      rl.question(prompt, (answer) => {
+        rl.close();
+        const lowerAnswer = answer.toLowerCase().trim();
+        resolve(lowerAnswer === 'yes' || lowerAnswer === 'y');
+      });
+    });
   }
 
   async getEmbeddingProgress(tableName: string, embeddingColumn: string): Promise<{

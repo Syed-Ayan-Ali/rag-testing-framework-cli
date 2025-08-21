@@ -40,7 +40,7 @@ export class ConfigManager {
       },
       embedding: {
         model: 'local',
-        localModel: process.env.EMBEDDING_MODEL || fileConfig.embedding?.localModel || 'Xenova/all-MiniLM-L6-v2'
+        localModel: process.env.EMBEDDING_MODEL || fileConfig.embedding?.localModel || 'Xenova/all-MiniLM-L6-v2-small'
       },
       outputPath: process.env.OUTPUT_PATH || fileConfig.outputPath || './rag-test-results'
     };
@@ -78,7 +78,7 @@ export class ConfigManager {
         break;
       case 'local':
       default:
-        config.localModel = process.env.LOCAL_EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2';
+        config.localModel = process.env.LOCAL_EMBEDDING_MODEL || 'Xenova/all-MiniLM-L6-v2-small';
         break;
     }
 
