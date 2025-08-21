@@ -108,6 +108,11 @@ The tool can be configured in multiple ways (in order of priority):
    CUSTOM_API_KEY=your-custom-key
    CUSTOM_ENDPOINT=https://your-api.com/v1/chat/completions
    CUSTOM_MODEL=your-model-name
+   
+   # Example for Qwen 3:
+   # CUSTOM_API_KEY=ms-12345678-...
+   # CUSTOM_ENDPOINT=https://api-inference.modelscope.cn/v1/chat/completions
+   # CUSTOM_MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct
    ```
 
 2. **Interactive setup**: `rag-test configure`

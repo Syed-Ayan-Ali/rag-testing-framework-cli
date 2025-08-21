@@ -611,7 +611,7 @@ program
   .option('-t, --table <table>', 'Table name')
   .option('-s, --source-column <column>', 'Source column to base content on')
   .option('-c, --target-column <column>', 'Target column to populate')
-  .option('-p, --provider <provider>', 'LLM provider (openai, gemini, anthropic)')
+  .option('-p, --provider <provider>', 'LLM provider (openai, gemini, anthropic, custom)')
   .option('--prompt-type <type>', 'Predefined prompt type (tags, description, summary, keywords)', 'custom')
   .option('--custom-prompt <prompt>', 'Custom prompt for LLM')
   .option('-b, --batch-size <size>', 'Batch size for processing', '10')
@@ -647,6 +647,7 @@ program
         console.log('  • OPENAI_API_KEY for OpenAI');
         console.log('  • GEMINI_API_KEY or GOOGLE_AI_API_KEY for Gemini');
         console.log('  • ANTHROPIC_API_KEY for Anthropic');
+        console.log('  • CUSTOM_API_KEY for OpenAI-compatible APIs (like Qwen, Llama, etc.)');
         return;
       }
 

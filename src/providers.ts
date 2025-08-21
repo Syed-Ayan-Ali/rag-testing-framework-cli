@@ -282,6 +282,11 @@ export class ProviderManager {
       providers.llm.push('anthropic');
     }
 
+    // Check for custom OpenAI-compatible API
+    if (process.env.CUSTOM_API_KEY) {
+      providers.llm.push('custom');
+    }
+
     return providers;
   }
 }
