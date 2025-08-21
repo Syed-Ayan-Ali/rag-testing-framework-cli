@@ -123,7 +123,7 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
-export class OpenAILLMProvider implements LLMProvider {
+export class OpenAICompatibleLLMProvider implements LLMProvider {
   private config: LLMConfig;
 
   constructor(config: LLMConfig) {
@@ -132,125 +132,111 @@ export class OpenAILLMProvider implements LLMProvider {
 
   async initialize(): Promise<void> {
     if (!this.config.apiKey) {
-      throw new Error('OpenAI API key is required');
+      throw new Error('API key is required');
     }
   }
 
   async generateText(prompt: string, context: string): Promise<string> {
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      // Determine the API endpoint and format based on provider
+      const { endpoint, headers, body, responseExtractor } = this.getProviderConfig(prompt, context);
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.config.model || 'gpt-3.5-turbo',
-          messages: [
-            { role: 'system', content: prompt },
-            { role: 'user', content: context }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000,
-        }),
+        headers,
+        body: JSON.stringify(body),
       });
 
       const data = await response.json() as any;
       
       if (!response.ok) {
-        throw new Error(`OpenAI API error: ${data.error?.message || response.statusText}`);
+        throw new Error(`${this.config.provider} API error: ${data.error?.message || response.statusText}`);
       }
 
-      return data.choices[0].message.content.trim();
+      return responseExtractor(data);
     } catch (error) {
-      console.error('Failed to generate OpenAI text:', error);
+      console.error(`Failed to generate ${this.config.provider} text:`, error);
       throw error;
     }
   }
-}
 
-export class GeminiLLMProvider implements LLMProvider {
-  private config: LLMConfig;
+  private getProviderConfig(prompt: string, context: string) {
+    const basePrompt = `${prompt}\n\nContext: ${context}`;
+    
+    switch (this.config.provider) {
+      case 'openai':
+        return {
+          endpoint: 'https://api.openai.com/v1/chat/completions',
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'Content-Type': 'application/json',
+          } as Record<string, string>,
+          body: {
+            model: this.config.model || 'gpt-4o',
+            messages: [
+              { role: 'system', content: prompt },
+              { role: 'user', content: context }
+            ],
+            temperature: 0.7,
+            max_tokens: 1000,
+          },
+          responseExtractor: (data: any) => data.choices[0].message.content.trim()
+        };
 
-  constructor(config: LLMConfig) {
-    this.config = config;
-  }
+      case 'gemini':
+        return {
+          endpoint: `https://generativelanguage.googleapis.com/v1beta/models/${this.config.model || 'gemini-1.5-flash'}:generateContent?key=${this.config.apiKey}`,
+          headers: {
+            'Content-Type': 'application/json',
+          } as Record<string, string>,
+          body: {
+            contents: [{
+              parts: [{ text: basePrompt }]
+            }]
+          },
+          responseExtractor: (data: any) => data.candidates[0].content.parts[0].text.trim()
+        };
 
-  async initialize(): Promise<void> {
-    if (!this.config.apiKey) {
-      throw new Error('Gemini API key is required');
-    }
-  }
+      case 'anthropic':
+        return {
+          endpoint: 'https://api.anthropic.com/v1/messages',
+          headers: {
+            'x-api-key': this.config.apiKey,
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+          } as Record<string, string>,
+          body: {
+            model: this.config.model || 'claude-3-sonnet-20240229',
+            max_tokens: 1000,
+            messages: [
+              { role: 'user', content: basePrompt }
+            ],
+          },
+          responseExtractor: (data: any) => data.content[0].text.trim()
+        };
 
-  async generateText(prompt: string, context: string): Promise<string> {
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.config.model || 'gemma-3-27b-it'}:generateContent?key=${this.config.apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: `${prompt}\n\nContext: ${context}` }]
-          }]
-        }),
-      });
+      case 'custom':
+        // For any OpenAI-compatible API
+        return {
+          endpoint: this.config.endpoint || 'https://api.openai.com/v1/chat/completions',
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'Content-Type': 'application/json',
+          } as Record<string, string>,
+          body: {
+            model: this.config.model || 'gpt-4o',
+            messages: [
+              { role: 'system', content: prompt },
+              { role: 'user', content: context }
+            ],
+            temperature: 0.7,
+            max_tokens: 1000,
+          },
+          responseExtractor: (data: any) => data.choices[0].message.content.trim()
+        };
 
-      const data = await response.json() as any;
-      
-      if (!response.ok) {
-        throw new Error(`Gemini API error: ${data.error?.message || response.statusText}`);
-      }
-
-      return data.candidates[0].content.parts[0].text.trim();
-    } catch (error) {
-      console.error('Failed to generate Gemini text:', error);
-      throw error;
-    }
-  }
-}
-
-export class AnthropicLLMProvider implements LLMProvider {
-  private config: LLMConfig;
-
-  constructor(config: LLMConfig) {
-    this.config = config;
-  }
-
-  async initialize(): Promise<void> {
-    if (!this.config.apiKey) {
-      throw new Error('Anthropic API key is required');
-    }
-  }
-
-  async generateText(prompt: string, context: string): Promise<string> {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': this.config.apiKey,
-          'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: this.config.model || 'claude-3-sonnet-20240229',
-          max_tokens: 1000,
-          messages: [
-            { role: 'user', content: `${prompt}\n\nContext: ${context}` }
-          ],
-        }),
-      });
-
-      const data = await response.json() as any;
-      
-      if (!response.ok) {
-        throw new Error(`Anthropic API error: ${data.error?.message || response.statusText}`);
-      }
-
-      return data.content[0].text.trim();
-    } catch (error) {
-      console.error('Failed to generate Anthropic text:', error);
-      throw error;
+      default:
+        throw new Error(`Unsupported provider: ${this.config.provider}`);
     }
   }
 }
@@ -269,16 +255,7 @@ export class ProviderManager {
   }
 
   static createLLMProvider(config: LLMConfig): LLMProvider {
-    switch (config.provider) {
-      case 'openai':
-        return new OpenAILLMProvider(config);
-      case 'gemini':
-        return new GeminiLLMProvider(config);
-      case 'anthropic':
-        return new AnthropicLLMProvider(config);
-      default:
-        throw new Error(`Unsupported LLM provider: ${config.provider}`);
-    }
+    return new OpenAICompatibleLLMProvider(config);
   }
 
   static detectAvailableProviders(): {

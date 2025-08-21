@@ -13,9 +13,10 @@ export interface EmbeddingConfig {
 }
 
 export interface LLMConfig {
-  provider: 'openai' | 'gemini' | 'anthropic';
+  provider: 'openai' | 'gemini' | 'anthropic' | 'custom';
   apiKey: string;
   model: string;
+  endpoint?: string; // For custom OpenAI-compatible APIs
 }
 
 export interface EmbeddingTask {

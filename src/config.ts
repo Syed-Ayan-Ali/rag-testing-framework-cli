@@ -105,6 +105,13 @@ export class ConfigManager {
           apiKey: process.env.ANTHROPIC_API_KEY || '',
           model: process.env.ANTHROPIC_MODEL || 'claude-3-sonnet-20240229'
         };
+      case 'custom':
+        return {
+          provider: 'custom',
+          apiKey: process.env.CUSTOM_API_KEY || '',
+          model: process.env.CUSTOM_MODEL || 'gpt-4o',
+          endpoint: process.env.CUSTOM_ENDPOINT
+        };
       default:
         throw new Error(`Unsupported LLM provider: ${provider}`);
     }

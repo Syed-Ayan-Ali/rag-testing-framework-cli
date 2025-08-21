@@ -103,6 +103,11 @@ The tool can be configured in multiple ways (in order of priority):
    OPENAI_API_KEY=your-openai-key
    GEMINI_API_KEY=your-gemini-key
    ANTHROPIC_API_KEY=your-anthropic-key
+   
+   # Custom OpenAI-compatible API
+   CUSTOM_API_KEY=your-custom-key
+   CUSTOM_ENDPOINT=https://your-api.com/v1/chat/completions
+   CUSTOM_MODEL=your-model-name
    ```
 
 2. **Interactive setup**: `rag-test configure`
@@ -228,6 +233,7 @@ Specialized metric for banking regulation documents:
 - **OpenAI**: GPT-3.5-turbo, GPT-4, GPT-4-turbo
 - **Gemini**: gemini-pro, gemini-pro-vision
 - **Anthropic**: Claude-3-sonnet, Claude-3-haiku
+- **Custom**: Any OpenAI-compatible API endpoint
 
 ## 📊 Output
 
