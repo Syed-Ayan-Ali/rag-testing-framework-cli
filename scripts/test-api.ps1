@@ -66,6 +66,8 @@ $testBody = @{
     )
     temperature = 0.7
     max_tokens = 100
+    enable_thinking = $false
+    stream = $false
 } | ConvertTo-Json -Depth 10
 
 $headers = @{

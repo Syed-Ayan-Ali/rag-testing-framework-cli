@@ -115,6 +115,7 @@ The tool can be configured in multiple ways (in order of priority):
 # CUSTOM_MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct
 #
 # Note: The endpoint must end with /chat/completions for OpenAI-compatible APIs
+# Qwen models require enable_thinking=false and stream=false (automatically set)
    ```
 
 2. **Interactive setup**: `rag-test configure`

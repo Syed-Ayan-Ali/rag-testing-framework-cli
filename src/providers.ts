@@ -261,6 +261,8 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
             ],
             temperature: 0.7,
             max_tokens: 1000,
+            enable_thinking: false,
+            stream: false,
           },
           responseExtractor: (data: any) => data.choices[0].message.content.trim()
         };
