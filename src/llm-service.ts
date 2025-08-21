@@ -114,6 +114,7 @@ export class LLMService {
     const results = [];
 
     for (const row of rows) {
+      console.log(chalk.red(`\n🔄 ${row}:`));
       try {
         const sourceValue = this.formatSourceValue(row[task.sourceColumn]);
         if (!sourceValue) {
