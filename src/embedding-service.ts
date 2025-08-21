@@ -181,11 +181,11 @@ export class EmbeddingService {
         const embedding = await this.embeddingProvider.generateEmbedding(text);
         
         // Warn if embedding is too large for Supabase
-        if (embedding.length > 16000) {
-          console.log(chalk.red(`❌ ERROR: Embedding has ${embedding.length} dimensions, which exceeds Supabase's 16000 limit!`));
-          console.log(chalk.yellow(`   Consider using a smaller model like 'Xenova/all-MiniLM-L6-v2-small' or 'Xenova/all-MiniLM-L6-v2'`));
-          throw new Error(`Embedding dimension ${embedding.length} exceeds Supabase limit of 16000`);
-        }
+        // if (embedding.length > 16000) {
+        //   console.log(chalk.red(`❌ ERROR: Embedding has ${embedding.length} dimensions, which exceeds Supabase's 16000 limit!`));
+        //   console.log(chalk.yellow(`   Consider using a smaller model like 'Xenova/all-MiniLM-L6-v2-small' or 'Xenova/all-MiniLM-L6-v2'`));
+        //   throw new Error(`Embedding dimension ${embedding.length} exceeds Supabase limit of 16000`);
+        // }
         
         console.log(chalk.green(`   ✅ Generated embedding: ${embedding.length} dimensions`));
         console.log('');
