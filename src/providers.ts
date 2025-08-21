@@ -1,4 +1,5 @@
 import { EmbeddingConfig, LLMConfig } from './types';
+import chalk from 'chalk';
 
 export interface EmbeddingProvider {
   generateEmbedding(text: string): Promise<number[]>;
@@ -141,11 +142,25 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
       // Determine the API endpoint and format based on provider
       const { endpoint, headers, body, responseExtractor } = this.getProviderConfig(prompt, context);
       
+      console.log(chalk.gray(`   🔗 API Endpoint: ${endpoint}`));
+      console.log(chalk.gray(`   📤 Request Body: ${JSON.stringify(body, null, 2)}`));
+      
       const response = await fetch(endpoint, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
       });
+
+      // Check if response is HTML (error page) instead of JSON
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        const htmlResponse = await response.text();
+        console.error(chalk.red(`❌ API returned HTML instead of JSON:`));
+        console.error(chalk.red(`   Status: ${response.status} ${response.statusText}`));
+        console.error(chalk.red(`   Endpoint: ${endpoint}`));
+        console.error(chalk.red(`   Response preview: ${htmlResponse.substring(0, 200)}...`));
+        throw new Error(`API endpoint returned HTML instead of JSON. Check your endpoint URL: ${endpoint}`);
+      }
 
       const data = await response.json() as any;
       
@@ -217,8 +232,23 @@ export class OpenAICompatibleLLMProvider implements LLMProvider {
 
       case 'custom':
         // For any OpenAI-compatible API
+        let customEndpoint = this.config.endpoint || 'https://api.openai.com/v1/chat/completions';
+        
+        // Ensure the endpoint has the correct path for chat completions
+        if (!customEndpoint.endsWith('/chat/completions')) {
+          if (customEndpoint.endsWith('/')) {
+            customEndpoint = customEndpoint + 'chat/completions';
+          } else if (customEndpoint.endsWith('/v1')) {
+            customEndpoint = customEndpoint + '/chat/completions';
+          } else if (customEndpoint.endsWith('/v1/')) {
+            customEndpoint = customEndpoint + 'chat/completions';
+          } else {
+            customEndpoint = customEndpoint + '/chat/completions';
+          }
+        }
+        
         return {
-          endpoint: this.config.endpoint || 'https://api.openai.com/v1/chat/completions',
+          endpoint: customEndpoint,
           headers: {
             'Authorization': `Bearer ${this.config.apiKey}`,
             'Content-Type': 'application/json',

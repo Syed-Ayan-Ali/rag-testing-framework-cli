@@ -648,6 +648,7 @@ program
         console.log('  • GEMINI_API_KEY or GOOGLE_AI_API_KEY for Gemini');
         console.log('  • ANTHROPIC_API_KEY for Anthropic');
         console.log('  • CUSTOM_API_KEY for OpenAI-compatible APIs (like Qwen, Llama, etc.)');
+        console.log('    Note: CUSTOM_ENDPOINT should end with /chat/completions');
         return;
       }
 
