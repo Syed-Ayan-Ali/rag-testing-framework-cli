@@ -578,7 +578,24 @@ program
       // Create embedding service
       const embeddingConfig = configManager.createEmbeddingConfig(provider);
       const { EmbeddingService } = await import('./embedding-service');
-      const embeddingService = new EmbeddingService(database, embeddingConfig);
+      const { AVAILABLE_EMBEDDING_MODELS } = await import('./models/embedding-models');
+      
+      // Let user choose embedding model
+      const modelChoices = AVAILABLE_EMBEDDING_MODELS.map(model => ({
+        name: `${model.name} (${model.dimensions} dimensions) - ${model.description}`,
+        value: model.id
+      }));
+      
+      const { selectedModelId } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'selectedModelId',
+          message: 'Select embedding model:',
+          choices: modelChoices
+        }
+      ]);
+      
+      const embeddingService = new EmbeddingService(database, selectedModelId);
       
       await embeddingService.initialize();
 

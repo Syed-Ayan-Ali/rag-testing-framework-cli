@@ -302,4 +302,20 @@ export class DatabaseConnection {
       return 0;
     }
   }
+
+  async getRowColumnValue(tableName: string, rowId: any, columnName: string): Promise<any> {
+    try {
+      const { data, error } = await this.supabase
+        .from(tableName)
+        .select(columnName)
+        .eq('id', rowId)
+        .single();
+
+      if (error) throw error;
+      return data?.[columnName as keyof typeof data] || null;
+    } catch (error) {
+      console.error(`Failed to get column value for row ${rowId}:`, error);
+      return null;
+    }
+  }
 }
