@@ -4,7 +4,7 @@ A new command has been added to your rag-cli-tester CLI tool to parse PDF files 
 
 ## Client Setup Requirements
 
-**⚠️ Important**: This command requires Python and pypdfium2 to be installed in the client's environment, not in the npm package. The package will check for these dependencies and provide clear error messages if they're missing.
+**⚠️ Important**: This command requires Python and pypdfium2 to be installed in the client's environment. The npm package includes an embedded Python script that runs using your local Python installation.
 
 ### 1. Install Python
 
@@ -28,7 +28,7 @@ Install the required Python package in your environment:
 pip install pypdfium2>=4.0.0
 ```
 
-**Note**: The `requirements.txt` file in this package is for reference only. Clients should install pypdfium2 in their own environment, not use the package's requirements.txt.
+**Note**: The package uses an embedded Python script approach, eliminating the need for external `.py` files and solving the npm packaging issue.
 
 ## Usage
 

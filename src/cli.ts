@@ -13,6 +13,7 @@ import { DatabaseConnection } from './database';
 import { EmbeddingGenerator } from './embeddings';
 import { RAGTester } from './tester';
 import { TestConfiguration, ExperimentResults } from './types';
+import { PythonService } from './python-service';
 
 const program = new Command();
 
@@ -806,33 +807,6 @@ program
     const spinner = ora('Initializing PDF parser...').start();
 
     try {
-      // Check if Python is available
-      const pythonCheck = await new Promise<{success: boolean, pythonCmd: string}>((resolve) => {
-        const checkPython = spawn('python3', ['--version']);
-        checkPython.on('close', (code) => {
-          if (code === 0) resolve({success: true, pythonCmd: 'python3'});
-        });
-        checkPython.on('error', () => {
-          // Try python instead of python3
-          const checkPython2 = spawn('python', ['--version']);
-          checkPython2.on('close', (code) => {
-            if (code === 0) resolve({success: true, pythonCmd: 'python'});
-            else resolve({success: false, pythonCmd: ''});
-          });
-          checkPython2.on('error', () => resolve({success: false, pythonCmd: ''}));
-        });
-      });
-
-      if (!pythonCheck.success) {
-        spinner.fail('Python not found');
-        console.error(chalk.red('❌ Python is required but not found. Please install Python 3.7+'));
-        console.log(chalk.yellow('📦 Install Python: https://www.python.org/downloads/'));
-        console.log(chalk.yellow('📦 Then install pypdfium2: pip install pypdfium2>=4.0.0'));
-        process.exit(1);
-      }
-
-      spinner.stop();
-
       // Get PDF file path
       let pdfFilePath = options.file;
       if (!pdfFilePath) {
@@ -881,49 +855,18 @@ program
       }
 
       const outputPath = path.join(outputDir, `${outputName}.txt`);
-      const scriptPath = path.join(__dirname, '../pdf-parser.py');
 
       console.log(chalk.blue('\n📄 PDF Parsing Task:'));
       console.log(`  Input: ${pdfFilePath}`);
       console.log(`  Output: ${outputPath}`);
-      console.log(`  Script: ${scriptPath}\n`);
+      console.log(`  Parser: Embedded Python Script\n`);
 
-      const parseSpinner = ora('Extracting text from PDF...').start();
+      spinner.text = 'Extracting text from PDF...';
 
-      // Run Python script
-      const result = await new Promise<any>((resolve, reject) => {
-        const pythonProcess = spawn(pythonCheck.pythonCmd, [scriptPath, pdfFilePath, outputPath]);
+      // Use the PythonService to parse the PDF
+      const result = await PythonService.parsePDF(pdfFilePath, outputPath);
 
-        let stdout = '';
-        let stderr = '';
-
-        pythonProcess.stdout.on('data', (data) => {
-          stdout += data.toString();
-        });
-
-        pythonProcess.stderr.on('data', (data) => {
-          stderr += data.toString();
-        });
-
-        pythonProcess.on('close', (code) => {
-          if (code === 0) {
-            try {
-              const result = JSON.parse(stdout.trim());
-              resolve(result);
-            } catch (e) {
-              reject(new Error('Failed to parse Python script output'));
-            }
-          } else {
-            reject(new Error(stderr || `Python script exited with code ${code}`));
-          }
-        });
-
-        pythonProcess.on('error', (error) => {
-          reject(error);
-        });
-      });
-
-      parseSpinner.stop();
+      spinner.stop();
 
       if (result.success) {
         console.log(chalk.green('\n✅ PDF parsing completed successfully!'));
