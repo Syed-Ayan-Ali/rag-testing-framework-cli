@@ -7,13 +7,12 @@ import inquirer from 'inquirer';
 import Table from 'cli-table3';
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
 import { ConfigManager } from './config';
 import { DatabaseConnection } from './database';
 import { EmbeddingGenerator } from './embeddings';
 import { RAGTester } from './tester';
 import { TestConfiguration, ExperimentResults } from './types';
-import { PythonService } from './python-service';
+import { PDFParser } from './pdf-parser';
 
 const program = new Command();
 
@@ -24,6 +23,99 @@ program
   .name('rag-test')
   .description('CLI tool for testing RAG systems with different embedding combinations')
   .version(packageJson.version);
+
+// PDF Parser command
+program
+  .command('parse-pdf')
+  .description('Parse PDF files using pypdfium2 and extract text')
+  .argument('[pdf-path]', 'Path to the PDF file to parse (optional when using --check)')
+  .option('-o, --output-dir <directory>', 'Output directory for parsed text files', 'parsed_output')
+  .option('--check', 'Check if PDF parser is available')
+  .action(async (pdfPath: string | undefined, options) => {
+    try {
+      const pdfParser = new PDFParser();
+      
+      if (options.check) {
+        console.log(chalk.blue('🔍 Checking PDF parser availability...'));
+        const availability = await pdfParser.checkAvailability();
+        
+        if (availability.available) {
+          console.log(chalk.green('✅ PDF parser is available and ready to use'));
+          console.log(chalk.gray('  ✓ Python is installed and accessible'));
+          console.log(chalk.gray('  ✓ pypdfium2 library is installed'));
+          console.log(chalk.gray('  ✓ PDF parser script is available'));
+        } else {
+          console.log(chalk.red('❌ PDF parser is not available'));
+          console.error(chalk.red(`Error: ${availability.error}`));
+          console.log(chalk.yellow('\n📋 Setup Instructions:'));
+          
+          if (availability.error?.includes('Python')) {
+            console.log(chalk.yellow('1. Install Python 3.6+ from https://python.org/downloads/'));
+            console.log(chalk.yellow('2. Ensure Python is in your system PATH'));
+            console.log(chalk.yellow('3. Verify with: python --version'));
+          }
+          
+          if (availability.error?.includes('pypdfium2')) {
+            console.log(chalk.yellow('1. Install pypdfium2 in your Python environment:'));
+            console.log(chalk.cyan('   pip install pypdfium2'));
+            console.log(chalk.cyan('   # or'));
+            console.log(chalk.cyan('   python -m pip install pypdfium2'));
+            console.log(chalk.yellow('2. If using a virtual environment, activate it first'));
+          }
+          
+          console.log(chalk.yellow('\n🔄 After installation, run this command again to verify.'));
+        }
+        return;
+      }
+      
+      if (!pdfPath) {
+        console.error(chalk.red('❌ PDF path is required when not using --check option'));
+        console.log(chalk.yellow('Usage: rag-test parse-pdf <pdf-path> [options]'));
+        process.exit(1);
+      }
+      
+      console.log(chalk.blue(`📄 Parsing PDF: ${pdfPath}`));
+      console.log(chalk.gray(`Output directory: ${options.outputDir}`));
+      
+      // Check if environment is ready before parsing
+      console.log(chalk.gray('🔍 Checking environment...'));
+      const availability = await pdfParser.checkAvailability();
+      if (!availability.available) {
+        console.error(chalk.red('❌ Environment check failed'));
+        console.error(chalk.red(`Error: ${availability.error}`));
+        console.log(chalk.yellow('\n💡 Tip: Run "rag-test parse-pdf --check" for detailed setup instructions'));
+        process.exit(1);
+      }
+      
+      const result = await pdfParser.parsePDF(pdfPath, options.outputDir);
+      
+      if (result.success) {
+        console.log(chalk.green('✅ PDF parsed successfully!'));
+        console.log(chalk.green(`📁 Output saved to: ${result.outputFile}`));
+        
+        // Show file size
+        const stats = fs.statSync(result.outputFile!);
+        const fileSizeInKB = (stats.size / 1024).toFixed(2);
+        console.log(chalk.gray(`📊 File size: ${fileSizeInKB} KB`));
+        
+        // Show preview of content
+        const content = fs.readFileSync(result.outputFile!, 'utf-8');
+        const preview = content.substring(0, 500);
+        console.log(chalk.blue('\n📖 Content preview:'));
+        console.log(chalk.gray(preview));
+        if (content.length > 500) {
+          console.log(chalk.gray('... (truncated)'));
+        }
+      } else {
+        console.error(chalk.red('❌ Failed to parse PDF'));
+        console.error(chalk.red(`Error: ${result.error}`));
+        process.exit(1);
+      }
+    } catch (error) {
+      console.error(chalk.red(`❌ PDF parsing failed: ${error instanceof Error ? error.message : String(error)}`));
+      process.exit(1);
+    }
+  });
 
 // Configure command
 program
@@ -794,99 +886,6 @@ program
 
     } catch (error: any) {
       spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
-    }
-  });
-
-// Parse PDF command
-program
-  .command('parse-pdf')
-  .description('Parse PDF files and extract text using pypdfium2')
-  .option('-f, --file <filePath>', 'Path to PDF file')
-  .option('-o, --output <outputName>', 'Output filename (without extension)')
-  .action(async (options) => {
-    const spinner = ora('Initializing PDF parser...').start();
-
-    try {
-      // Get PDF file path
-      let pdfFilePath = options.file;
-      if (!pdfFilePath) {
-        const { selectedFile } = await inquirer.prompt([{
-          type: 'input',
-          name: 'selectedFile',
-          message: 'Enter path to PDF file:',
-          validate: (input: string) => {
-            if (!input) return 'PDF file path is required';
-            if (!fs.existsSync(input)) return 'File does not exist';
-            if (!input.toLowerCase().endsWith('.pdf')) return 'File must be a PDF';
-            return true;
-          }
-        }]);
-        pdfFilePath = selectedFile;
-      }
-
-      // Validate PDF file
-      if (!fs.existsSync(pdfFilePath)) {
-        console.error(chalk.red(`❌ PDF file not found: ${pdfFilePath}`));
-        process.exit(1);
-      }
-
-      if (!pdfFilePath.toLowerCase().endsWith('.pdf')) {
-        console.error(chalk.red('❌ File must be a PDF'));
-        process.exit(1);
-      }
-
-      // Get output filename
-      let outputName = options.output;
-      if (!outputName) {
-        const defaultName = path.basename(pdfFilePath, '.pdf');
-        const { customName } = await inquirer.prompt([{
-          type: 'input',
-          name: 'customName',
-          message: 'Output filename (without extension):',
-          default: defaultName
-        }]);
-        outputName = customName;
-      }
-
-      // Create output directory
-      const outputDir = path.join(process.cwd(), 'parsed_output');
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-      }
-
-      const outputPath = path.join(outputDir, `${outputName}.txt`);
-
-      console.log(chalk.blue('\n📄 PDF Parsing Task:'));
-      console.log(`  Input: ${pdfFilePath}`);
-      console.log(`  Output: ${outputPath}`);
-      console.log(`  Parser: Embedded Python Script\n`);
-
-      spinner.text = 'Extracting text from PDF...';
-
-      // Use the PythonService to parse the PDF
-      const result = await PythonService.parsePDF(pdfFilePath, outputPath);
-
-      spinner.stop();
-
-      if (result.success) {
-        console.log(chalk.green('\n✅ PDF parsing completed successfully!'));
-        console.log(chalk.bold('\n📊 Extraction Summary:'));
-        console.log(`  📄 Pages processed: ${result.pages}`);
-        console.log(`  📝 Text length: ${result.text_length.toLocaleString()} characters`);
-        console.log(`  💾 Output saved to: ${result.output_path}`);
-
-        if (result.metadata && result.metadata.title) {
-          console.log(`  📋 Title: ${result.metadata.title}`);
-        }
-      } else {
-        console.error(chalk.red('\n❌ PDF parsing failed:'));
-        console.error(chalk.red(`  Error: ${result.error}`));
-        process.exit(1);
-      }
-
-    } catch (error: any) {
-      spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
-      process.exit(1);
     }
   });
 

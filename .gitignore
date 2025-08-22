@@ -98,6 +98,3 @@ jspm_packages/
 # Package-specific
 .rag-config.json
 rag-test-results/
-
-# Temporary Python scripts
-temp/
