@@ -318,4 +318,52 @@ export class DatabaseConnection {
       return null;
     }
   }
+
+  async getTableDataSample(tableName: string, sampleSize: number, ratio: number): Promise<any[]> {
+    try {
+      // For large datasets, use efficient sampling
+      // First get total count
+      const { count: totalCount, error: countError } = await this.supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) throw countError;
+
+      if (!totalCount || totalCount <= sampleSize) {
+        // If dataset is small, return all data
+        return await this.getTableData(tableName);
+      }
+
+      // Calculate offset based on ratio
+      const offset = Math.floor(totalCount * ratio);
+      
+      // Use random sampling with offset for large datasets
+      // This is more efficient than loading all data into memory
+      const { data, error } = await this.supabase
+        .from(tableName)
+        .select('*')
+        .range(offset, offset + sampleSize - 1);
+
+      if (error) throw error;
+
+      // If we got fewer rows than requested, try to get more
+      if (data && data.length < sampleSize) {
+        const remaining = sampleSize - data.length;
+        const { data: additionalData, error: additionalError } = await this.supabase
+          .from(tableName)
+          .select('*')
+          .range(0, remaining - 1);
+
+        if (!additionalError && additionalData) {
+          data.push(...additionalData);
+        }
+      }
+
+      return data || [];
+    } catch (error) {
+      console.error(`Failed to get table data sample:`, error);
+      // Fallback to regular method
+      return await this.getTableData(tableName, ['*'], sampleSize);
+    }
+  }
 }
