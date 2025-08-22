@@ -1,1 +1,4 @@
+# Python dependencies for PDF parsing functionality
+# This file is for reference only - clients should install pypdfium2
+# in their own environment, not use this requirements.txt directly
 pypdfium2>=4.0.0

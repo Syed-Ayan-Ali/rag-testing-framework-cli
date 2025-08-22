@@ -2,25 +2,33 @@
 
 A new command has been added to your rag-cli-tester CLI tool to parse PDF files using Python's `pypdfium2` library.
 
-## Setup Requirements
+## Client Setup Requirements
 
-### 1. Install Python Dependencies
+**⚠️ Important**: This command requires Python and pypdfium2 to be installed in the client's environment, not in the npm package. The package will check for these dependencies and provide clear error messages if they're missing.
 
-Before using the PDF parser, install the required Python packages:
+### 1. Install Python
+
+Ensure Python 3.7+ is installed and accessible via `python3` or `python` command:
 
 ```bash
-pip install -r requirements.txt
+# Download and install Python from:
+# https://www.python.org/downloads/
+
+# Verify installation:
+python3 --version
+# or
+python --version
 ```
 
-Or manually install pypdfium2:
+### 2. Install pypdfium2
+
+Install the required Python package in your environment:
 
 ```bash
 pip install pypdfium2>=4.0.0
 ```
 
-### 2. Ensure Python is Available
-
-The command requires Python 3.7+ to be installed and accessible via `python3` or `python` command.
+**Note**: The `requirements.txt` file in this package is for reference only. Clients should install pypdfium2 in their own environment, not use the package's requirements.txt.
 
 ## Usage
 
@@ -108,16 +116,15 @@ rag-test parse-pdf --help
 
 **Solution**: Install Python and ensure it's in your PATH.
 
-### pypdfium2 Not Installed
+### pypdfium2 Import Error
 ```
-❌ pypdfium2 is required but not installed.
-📦 Install pypdfium2:
-   pip install pypdfium2
-   or
-   pip install -r requirements.txt
+❌ Failed: ModuleNotFoundError: No module named 'pypdfium2'
 ```
 
-**Solution**: Install the Python package using pip.
+**Solution**: Install the Python package in your environment:
+```bash
+pip install pypdfium2>=4.0.0
+```
 
 ### File Not Found
 ```

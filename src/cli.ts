@@ -807,40 +807,27 @@ program
 
     try {
       // Check if Python is available
-      const pythonCheck = await new Promise<boolean>((resolve) => {
+      const pythonCheck = await new Promise<{success: boolean, pythonCmd: string}>((resolve) => {
         const checkPython = spawn('python3', ['--version']);
-        checkPython.on('close', (code) => resolve(code === 0));
+        checkPython.on('close', (code) => {
+          if (code === 0) resolve({success: true, pythonCmd: 'python3'});
+        });
         checkPython.on('error', () => {
           // Try python instead of python3
           const checkPython2 = spawn('python', ['--version']);
-          checkPython2.on('close', (code) => resolve(code === 0));
-          checkPython2.on('error', () => resolve(false));
+          checkPython2.on('close', (code) => {
+            if (code === 0) resolve({success: true, pythonCmd: 'python'});
+            else resolve({success: false, pythonCmd: ''});
+          });
+          checkPython2.on('error', () => resolve({success: false, pythonCmd: ''}));
         });
       });
 
-      if (!pythonCheck) {
+      if (!pythonCheck.success) {
         spinner.fail('Python not found');
         console.error(chalk.red('❌ Python is required but not found. Please install Python 3.7+'));
         console.log(chalk.yellow('📦 Install Python: https://www.python.org/downloads/'));
-        process.exit(1);
-      }
-
-      // Check if pypdfium2 is available
-      const pypdfiumCheck = await new Promise<boolean>((resolve) => {
-        const checkPypdfium = spawn('python3', ['-c', 'import pypdfium2; print("OK")']);
-        let output = '';
-        checkPypdfium.stdout.on('data', (data) => output += data.toString());
-        checkPypdfium.on('close', (code) => resolve(code === 0 && output.includes('OK')));
-        checkPypdfium.on('error', () => resolve(false));
-      });
-
-      if (!pypdfiumCheck) {
-        spinner.fail('pypdfium2 not found');
-        console.error(chalk.red('❌ pypdfium2 is required but not installed.'));
-        console.log(chalk.yellow('📦 Install pypdfium2:'));
-        console.log(chalk.gray('   pip install pypdfium2'));
-        console.log(chalk.gray('   or'));
-        console.log(chalk.gray('   pip install -r requirements.txt'));
+        console.log(chalk.yellow('📦 Then install pypdfium2: pip install pypdfium2>=4.0.0'));
         process.exit(1);
       }
 
@@ -905,7 +892,7 @@ program
 
       // Run Python script
       const result = await new Promise<any>((resolve, reject) => {
-        const pythonProcess = spawn('python3', [scriptPath, pdfFilePath, outputPath]);
+        const pythonProcess = spawn(pythonCheck.pythonCmd, [scriptPath, pdfFilePath, outputPath]);
 
         let stdout = '';
         let stderr = '';
