@@ -13,7 +13,17 @@ export class PDFParser {
   private pythonScriptPath: string;
 
   constructor() {
-    this.pythonScriptPath = path.join(__dirname, '../scripts/pdf_parser.py');
+    // Fix path resolution for both development and production builds
+    const baseDir = __dirname.includes('dist') 
+      ? path.join(__dirname, '../scripts')  // Production build
+      : path.join(__dirname, 'scripts');    // Development
+    this.pythonScriptPath = path.join(baseDir, 'pdf_parser.py');
+    
+    // Debug logging
+    console.log(`  🔍 PDF Parser initialized`);
+    console.log(`  📁 Base directory: ${baseDir}`);
+    console.log(`  🐍 Python script path: ${this.pythonScriptPath}`);
+    console.log(`  ✅ Script exists: ${require('fs').existsSync(this.pythonScriptPath)}`);
   }
 
   /**
@@ -24,27 +34,40 @@ export class PDFParser {
    */
   async parsePDF(pdfPath: string, outputDir: string = 'parsed_output'): Promise<PDFParseResult> {
     try {
+      console.log(`  🔍 Starting PDF parsing process...`);
+      
       // Validate input
+      console.log(`  📄 Validating PDF file: ${pdfPath}`);
       if (!fs.existsSync(pdfPath)) {
+        console.log(`  ❌ PDF file not found`);
         return {
           success: false,
           error: `PDF file not found: ${pdfPath}`
         };
       }
+      console.log(`  ✅ PDF file exists`);
 
       // Check if Python script exists
+      console.log(`  🐍 Checking Python script: ${this.pythonScriptPath}`);
       if (!fs.existsSync(this.pythonScriptPath)) {
+        console.log(`  ❌ Python script not found`);
         return {
           success: false,
           error: `Python script not found: ${this.pythonScriptPath}`
         };
       }
+      console.log(`  ✅ Python script exists`);
 
       // Ensure output directory exists
+      console.log(`  📁 Creating output directory: ${outputDir}`);
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
+        console.log(`  ✅ Output directory created`);
+      } else {
+        console.log(`  ✅ Output directory already exists`);
       }
 
+      console.log(`  🚀 Starting Python script execution...`);
       // Run the Python script using python-shell
       const result = await this.runPythonScript(pdfPath, outputDir);
       
@@ -83,45 +106,58 @@ export class PDFParser {
    */
   private async runPythonScript(pdfPath: string, outputDir: string): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve) => {
-      // Add timeout to prevent hanging
-      const timeout = setTimeout(() => {
-        resolve({
-          success: false,
-          error: 'Python script execution timed out after 30 seconds'
-        });
-      }, 30000); // 30 second timeout
-
-      const options = {
-        mode: 'text' as const,
-        pythonPath: 'python',
-        pythonOptions: ['-u'], // unbuffered stdout
-        scriptPath: path.dirname(this.pythonScriptPath),
-        args: [pdfPath, '-o', outputDir]
-      };
-
-      const scriptName = path.basename(this.pythonScriptPath);
-      
-      console.log(`  🔧 Executing Python script: ${scriptName}`);
-      console.log(`  📁 Script path: ${options.scriptPath}`);
-      console.log(`  🐍 Python path: ${options.pythonPath}`);
-      console.log(`  📄 Arguments: ${options.args.join(' ')}`);
-      
-      PythonShell.run(scriptName, options)
-        .then(() => {
-          clearTimeout(timeout);
-          console.log('  ✅ Python script completed successfully');
-          resolve({
-            success: true
-          });
-        })
-        .catch((err: any) => {
-          clearTimeout(timeout);
-          console.log(`  ❌ Python script failed: ${err.message || err}`);
+      try {
+        console.log(`  🔧 Setting up Python script execution...`);
+        
+        // Add timeout to prevent hanging
+        const timeout = setTimeout(() => {
+          console.log(`  ⏰ Timeout reached - Python script execution timed out after 30 seconds`);
           resolve({
             success: false,
-            error: `Python execution failed: ${err.message || err}`
+            error: 'Python script execution timed out after 30 seconds'
           });
+        }, 30000); // 30 second timeout
+
+        const options = {
+          mode: 'text' as const,
+          pythonPath: 'python',
+          pythonOptions: ['-u'], // unbuffered stdout
+          scriptPath: path.dirname(this.pythonScriptPath),
+          args: [pdfPath, '-o', outputDir]
+        };
+
+        const scriptName = path.basename(this.pythonScriptPath);
+        
+        console.log(`  🔧 Executing Python script: ${scriptName}`);
+        console.log(`  📁 Script path: ${options.scriptPath}`);
+        console.log(`  🐍 Python path: ${options.pythonPath}`);
+        console.log(`  📄 Arguments: ${options.args.join(' ')}`);
+        
+        console.log(`  🚀 Calling PythonShell.run()...`);
+        
+        PythonShell.run(scriptName, options)
+          .then(() => {
+            clearTimeout(timeout);
+            console.log('  ✅ Python script completed successfully');
+            resolve({
+              success: true
+            });
+          })
+          .catch((err: any) => {
+            clearTimeout(timeout);
+            console.log(`  ❌ Python script failed: ${err.message || err}`);
+            resolve({
+              success: false,
+              error: `Python execution failed: ${err.message || err}`
+            });
+          });
+      } catch (error) {
+        console.log(`  💥 Error in runPythonScript setup: ${error}`);
+        resolve({
+          success: false,
+          error: `Setup error: ${error}`
         });
+      }
     });
   }
 
