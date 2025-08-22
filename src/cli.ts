@@ -7,6 +7,7 @@ import inquirer from 'inquirer';
 import Table from 'cli-table3';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import { ConfigManager } from './config';
 import { DatabaseConnection } from './database';
 import { EmbeddingGenerator } from './embeddings';
@@ -792,6 +793,170 @@ program
 
     } catch (error: any) {
       spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
+    }
+  });
+
+// Parse PDF command
+program
+  .command('parse-pdf')
+  .description('Parse PDF files and extract text using pypdfium2')
+  .option('-f, --file <filePath>', 'Path to PDF file')
+  .option('-o, --output <outputName>', 'Output filename (without extension)')
+  .action(async (options) => {
+    const spinner = ora('Initializing PDF parser...').start();
+
+    try {
+      // Check if Python is available
+      const pythonCheck = await new Promise<boolean>((resolve) => {
+        const checkPython = spawn('python3', ['--version']);
+        checkPython.on('close', (code) => resolve(code === 0));
+        checkPython.on('error', () => {
+          // Try python instead of python3
+          const checkPython2 = spawn('python', ['--version']);
+          checkPython2.on('close', (code) => resolve(code === 0));
+          checkPython2.on('error', () => resolve(false));
+        });
+      });
+
+      if (!pythonCheck) {
+        spinner.fail('Python not found');
+        console.error(chalk.red('❌ Python is required but not found. Please install Python 3.7+'));
+        console.log(chalk.yellow('📦 Install Python: https://www.python.org/downloads/'));
+        process.exit(1);
+      }
+
+      // Check if pypdfium2 is available
+      const pypdfiumCheck = await new Promise<boolean>((resolve) => {
+        const checkPypdfium = spawn('python3', ['-c', 'import pypdfium2; print("OK")']);
+        let output = '';
+        checkPypdfium.stdout.on('data', (data) => output += data.toString());
+        checkPypdfium.on('close', (code) => resolve(code === 0 && output.includes('OK')));
+        checkPypdfium.on('error', () => resolve(false));
+      });
+
+      if (!pypdfiumCheck) {
+        spinner.fail('pypdfium2 not found');
+        console.error(chalk.red('❌ pypdfium2 is required but not installed.'));
+        console.log(chalk.yellow('📦 Install pypdfium2:'));
+        console.log(chalk.gray('   pip install pypdfium2'));
+        console.log(chalk.gray('   or'));
+        console.log(chalk.gray('   pip install -r requirements.txt'));
+        process.exit(1);
+      }
+
+      spinner.stop();
+
+      // Get PDF file path
+      let pdfFilePath = options.file;
+      if (!pdfFilePath) {
+        const { selectedFile } = await inquirer.prompt([{
+          type: 'input',
+          name: 'selectedFile',
+          message: 'Enter path to PDF file:',
+          validate: (input: string) => {
+            if (!input) return 'PDF file path is required';
+            if (!fs.existsSync(input)) return 'File does not exist';
+            if (!input.toLowerCase().endsWith('.pdf')) return 'File must be a PDF';
+            return true;
+          }
+        }]);
+        pdfFilePath = selectedFile;
+      }
+
+      // Validate PDF file
+      if (!fs.existsSync(pdfFilePath)) {
+        console.error(chalk.red(`❌ PDF file not found: ${pdfFilePath}`));
+        process.exit(1);
+      }
+
+      if (!pdfFilePath.toLowerCase().endsWith('.pdf')) {
+        console.error(chalk.red('❌ File must be a PDF'));
+        process.exit(1);
+      }
+
+      // Get output filename
+      let outputName = options.output;
+      if (!outputName) {
+        const defaultName = path.basename(pdfFilePath, '.pdf');
+        const { customName } = await inquirer.prompt([{
+          type: 'input',
+          name: 'customName',
+          message: 'Output filename (without extension):',
+          default: defaultName
+        }]);
+        outputName = customName;
+      }
+
+      // Create output directory
+      const outputDir = path.join(process.cwd(), 'parsed_output');
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+
+      const outputPath = path.join(outputDir, `${outputName}.txt`);
+      const scriptPath = path.join(__dirname, '../pdf-parser.py');
+
+      console.log(chalk.blue('\n📄 PDF Parsing Task:'));
+      console.log(`  Input: ${pdfFilePath}`);
+      console.log(`  Output: ${outputPath}`);
+      console.log(`  Script: ${scriptPath}\n`);
+
+      const parseSpinner = ora('Extracting text from PDF...').start();
+
+      // Run Python script
+      const result = await new Promise<any>((resolve, reject) => {
+        const pythonProcess = spawn('python3', [scriptPath, pdfFilePath, outputPath]);
+
+        let stdout = '';
+        let stderr = '';
+
+        pythonProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        pythonProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        pythonProcess.on('close', (code) => {
+          if (code === 0) {
+            try {
+              const result = JSON.parse(stdout.trim());
+              resolve(result);
+            } catch (e) {
+              reject(new Error('Failed to parse Python script output'));
+            }
+          } else {
+            reject(new Error(stderr || `Python script exited with code ${code}`));
+          }
+        });
+
+        pythonProcess.on('error', (error) => {
+          reject(error);
+        });
+      });
+
+      parseSpinner.stop();
+
+      if (result.success) {
+        console.log(chalk.green('\n✅ PDF parsing completed successfully!'));
+        console.log(chalk.bold('\n📊 Extraction Summary:'));
+        console.log(`  📄 Pages processed: ${result.pages}`);
+        console.log(`  📝 Text length: ${result.text_length.toLocaleString()} characters`);
+        console.log(`  💾 Output saved to: ${result.output_path}`);
+
+        if (result.metadata && result.metadata.title) {
+          console.log(`  📋 Title: ${result.metadata.title}`);
+        }
+      } else {
+        console.error(chalk.red('\n❌ PDF parsing failed:'));
+        console.error(chalk.red(`  Error: ${result.error}`));
+        process.exit(1);
+      }
+
+    } catch (error: any) {
+      spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
+      process.exit(1);
     }
   });
 
