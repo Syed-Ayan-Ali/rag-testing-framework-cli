@@ -1,6 +1,6 @@
 {
   "name": "rag-cli-tester",
-  "version": "1.0.46",
+  "version": "1.0.47",
   "description": "A lightweight CLI tool for testing RAG (Retrieval-Augmented Generation) systems with different embedding combinations",
   "main": "dist/index.js",
   "bin": {
