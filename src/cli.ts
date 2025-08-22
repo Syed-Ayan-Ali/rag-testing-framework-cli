@@ -25,135 +25,11 @@ program
   .description('CLI tool for testing RAG systems with different embedding combinations')
   .version(packageJson.version);
 
-// Production Test command (ML best practices)
-program
-  .command('test-production')
-  .description('Run production RAG testing experiment following ML best practices with proper train/validation/test splits')
-  .option('-t, --table <tableName>', 'Table name to test')
-  .option('-c, --columns <columns>', 'Comma-separated list of columns for embeddings')
-  .option('-q, --query <column>', 'Column containing queries')
-  .option('-a, --answer <column>', 'Column containing expected answers')
-  .option('-m, --metric <type>', 'Metric type (brdr|sql|similarity)', 'sql')
-  .option('--train-ratio <number>', 'Training ratio (0-1)', '0.7')
-  .option('--val-ratio <number>', 'Validation ratio (0-1)', '0.15')
-  .option('--test-ratio <number>', 'Testing ratio (0-1)', '0.15')
-  .option('-n, --name <name>', 'Test name')
-  .option('-l, --limit <number>', 'Max combinations to test', '20')
-  .option('-b, --batch-size <number>', 'Batch size for processing', '100')
-  .option('--max-train <number>', 'Maximum training samples', '50000')
-  .option('--max-val <number>', 'Maximum validation samples', '10000')
-  .option('--max-test <number>', 'Maximum testing samples', '10000')
-  .option('--enable-caching', 'Enable embedding caching', false)
-  .option('--sampling <strategy>', 'Data sampling strategy (random|stratified|time_based|query_complexity)', 'random')
-  .option('--cv-folds <number>', 'Cross-validation folds', '5')
-  .option('--min-query-len <number>', 'Minimum query length', '10')
-  .option('--max-query-len <number>', 'Maximum query length', '500')
-  .option('--min-answer-len <number>', 'Minimum answer length', '10')
-  .option('--max-answer-len <number>', 'Maximum answer length', '1000')
-  .option('--timestamp-col <column>', 'Timestamp column for time-based sampling')
-  .option('--time-window <window>', 'Time window for sampling (daily|weekly|monthly)', 'weekly')
-  .action(async (options) => {
-    try {
-      const configManager = new ConfigManager();
-      const config = await configManager.loadConfig();
-
-      // Interactive mode if no options provided
-      let testConfig: ProductionTestConfiguration;
-      
-      if (!options.table) {
-        testConfig = await interactiveProductionTestSetup();
-      } else {
-        testConfig = {
-          tableName: options.table,
-          selectedColumns: options.columns?.split(',') || [],
-          queryColumn: options.query || '',
-          answerColumn: options.answer || '',
-          embeddingConfig: config.embedding,
-          metricType: options.metric || 'sql',
-          trainingRatio: parseFloat(options.trainRatio || '0.7'),
-          validationRatio: parseFloat(options.valRatio || '0.15'),
-          testingRatio: parseFloat(options.testRatio || '0.15'),
-          testName: options.name || `ProductionTest_${new Date().toISOString().replace(/[:.]/g, '-')}`,
-          maxCombinations: parseInt(options.limit || '20'),
-          maxTrainingSamples: parseInt(options.maxTrain || '50000'),
-          maxValidationSamples: parseInt(options.maxVal || '10000'),
-          maxTestingSamples: parseInt(options.maxTest || '10000'),
-          batchSize: parseInt(options.batchSize || '100'),
-          enableCaching: options.enableCaching || false,
-          crossValidationFolds: parseInt(options.cvFolds || '5'),
-          minQueryLength: parseInt(options.minQueryLen || '10'),
-          maxQueryLength: parseInt(options.maxQueryLen || '500'),
-          minAnswerLength: parseInt(options.minAnswerLen || '10'),
-          maxAnswerLength: parseInt(options.maxAnswerLen || '1000'),
-          samplingStrategy: (options.sampling as 'random' | 'stratified' | 'time_based' | 'query_complexity') || 'random',
-          timestampColumn: options.timestampCol,
-          timeWindow: (options.timeWindow as 'daily' | 'weekly' | 'monthly') || 'weekly'
-        };
-      }
-
-      await runProductionExperiment(testConfig, config);
-
-    } catch (error) {
-      console.error(chalk.red(`❌ Production test failed: ${error instanceof Error ? error.message : String(error)}`));
-      process.exit(1);
-    }
-  });
 
 
 
-// Enhanced Test command for large datasets
-program
-  .command('test-enhanced')
-  .description('Run enhanced RAG testing experiment optimized for large datasets (1M+ rows)')
-  .option('-t, --table <tableName>', 'Table name to test')
-  .option('-c, --columns <columns>', 'Comma-separated list of columns for embeddings')
-  .option('-q, --query <column>', 'Column containing queries')
-  .option('-a, --answer <column>', 'Column containing expected answers')
-  .option('-m, --metric <type>', 'Metric type (brdr|sql|similarity)', 'brdr')
-  .option('-r, --ratio <number>', 'Training ratio (0-1)', '0.8')
-  .option('-n, --name <name>', 'Test name')
-  .option('-l, --limit <number>', 'Max combinations to test', '20')
-  .option('-b, --batch-size <number>', 'Batch size for processing', '100')
-  .option('--max-training <number>', 'Maximum training samples', '10000')
-  .option('--max-testing <number>', 'Maximum testing samples', '2000')
-  .option('--enable-caching', 'Enable embedding caching', false)
-  .option('--sampling <strategy>', 'Data sampling strategy (random|stratified|sequential)', 'random')
-  .action(async (options) => {
-    try {
-      const configManager = new ConfigManager();
-      const config = await configManager.loadConfig();
 
-      // Interactive mode if no options provided
-      let testConfig: EnhancedTestConfiguration;
-      
-      if (!options.table) {
-        testConfig = await interactiveEnhancedTestSetup();
-      } else {
-        testConfig = {
-          tableName: options.table,
-          selectedColumns: options.columns?.split(',') || [],
-          queryColumn: options.query || '',
-          answerColumn: options.answer || '',
-          embeddingConfig: config.embedding,
-          metricType: options.metric || 'brdr',
-          trainingRatio: parseFloat(options.ratio || '0.8'),
-          testName: options.name || `EnhancedTest_${new Date().toISOString().replace(/[:.]/g, '-')}`,
-          maxCombinations: parseInt(options.limit || '20'),
-          batchSize: parseInt(options.batchSize || '100'),
-          maxTrainingSamples: parseInt(options.maxTraining || '10000'),
-          maxTestingSamples: parseInt(options.maxTesting || '2000'),
-          enableCaching: options.enableCaching || false,
-          dataSamplingStrategy: (options.sampling as 'random' | 'stratified' | 'sequential') || 'random'
-        };
-      }
 
-      await runEnhancedExperiment(testConfig, config);
-
-    } catch (error) {
-      console.error(chalk.red(`❌ Enhanced test failed: ${error instanceof Error ? error.message : String(error)}`));
-      process.exit(1);
-    }
-  });
 
 // Configure command
 program
@@ -338,10 +214,10 @@ program
     }
   });
 
-// Test command
+// Test command - Unified RAG testing with all features
 program
   .command('test')
-  .description('Run RAG testing experiment')
+  .description('Run comprehensive RAG testing experiment with all features (basic, enhanced, and production)')
   .option('-t, --table <tableName>', 'Table name to test')
   .option('-c, --columns <columns>', 'Comma-separated list of columns for embeddings')
   .option('-q, --query <column>', 'Column containing queries')
@@ -350,6 +226,19 @@ program
   .option('-r, --ratio <number>', 'Training ratio (0-1)', '0.8')
   .option('-n, --name <name>', 'Test name')
   .option('-l, --limit <number>', 'Max combinations to test', '20')
+  .option('-b, --batch-size <number>', 'Batch size for processing (default: 100)')
+  .option('--max-training <number>', 'Maximum training samples (default: 10000)')
+  .option('--max-testing <number>', 'Maximum testing samples (default: 2000)')
+  .option('--enable-caching', 'Enable embedding caching (default: false)')
+  .option('--sampling <strategy>', 'Data sampling strategy (random|stratified|sequential|time_based|query_complexity) (default: random)')
+  .option('--cv-folds <number>', 'Cross-validation folds (default: 5)')
+  .option('--min-query-len <number>', 'Minimum query length (default: 10)')
+  .option('--max-query-len <number>', 'Maximum query length (default: 500)')
+  .option('--min-answer-len <number>', 'Minimum answer length (default: 10)')
+  .option('--max-answer-len <number>', 'Maximum answer length (default: 1000)')
+  .option('--timestamp-col <column>', 'Timestamp column for time-based sampling')
+  .option('--time-window <window>', 'Time window for sampling (daily|weekly|monthly) (default: weekly)')
+  .option('--mode <type>', 'Test mode (basic|enhanced|production) (default: auto-detect based on options)')
   .action(async (options) => {
     try {
       const configManager = new ConfigManager();
@@ -361,26 +250,103 @@ program
       if (!options.table) {
         testConfig = await interactiveTestSetup();
       } else {
-        testConfig = {
-          tableName: options.table,
-          selectedColumns: options.columns?.split(',') || [],
-          queryColumn: options.query || '',
-          answerColumn: options.answer || '',
-          embeddingConfig: config.embedding,
-          metricType: options.metric as 'similarity' | 'brdr',
-          trainingRatio: parseFloat(options.ratio),
-          testName: options.name || `Test_${new Date().toISOString().replace(/[:.]/g, '-')}`,
-          maxCombinations: parseInt(options.limit)
-        };
+        // Auto-detect mode based on options
+        const mode = options.mode || detectTestMode(options);
+        
+        if (mode === 'production') {
+          testConfig = {
+            tableName: options.table,
+            selectedColumns: options.columns?.split(',') || [],
+            queryColumn: options.query || '',
+            answerColumn: options.answer || '',
+            embeddingConfig: config.embedding,
+            metricType: options.metric || 'sql',
+            trainingRatio: parseFloat(options.ratio || '0.7'),
+            validationRatio: 0.15,
+            testingRatio: 0.15,
+            testName: options.name || `ProductionTest_${new Date().toISOString().replace(/[:.]/g, '-')}`,
+            maxCombinations: parseInt(options.limit || '20'),
+            maxTrainingSamples: parseInt(options.maxTraining || '50000'),
+            maxValidationSamples: 10000,
+            maxTestingSamples: parseInt(options.maxTesting || '10000'),
+            batchSize: parseInt(options.batchSize || '100'),
+            enableCaching: options.enableCaching || false,
+            crossValidationFolds: parseInt(options.cvFolds || '5'),
+            minQueryLength: parseInt(options.minQueryLen || '10'),
+            maxQueryLength: parseInt(options.maxQueryLen || '500'),
+            minAnswerLength: parseInt(options.minAnswerLen || '10'),
+            maxAnswerLength: parseInt(options.maxAnswerLen || '1000'),
+            samplingStrategy: (options.sampling as any) || 'random',
+            timestampColumn: options.timestampCol,
+            timeWindow: (options.timeWindow as any) || 'weekly'
+          };
+        } else if (mode === 'enhanced') {
+          testConfig = {
+            tableName: options.table,
+            selectedColumns: options.columns?.split(',') || [],
+            queryColumn: options.query || '',
+            answerColumn: options.answer || '',
+            embeddingConfig: config.embedding,
+            metricType: options.metric || 'brdr',
+            trainingRatio: parseFloat(options.ratio || '0.8'),
+            testName: options.name || `EnhancedTest_${new Date().toISOString().replace(/[:.]/g, '-')}`,
+            maxCombinations: parseInt(options.limit || '20'),
+            batchSize: parseInt(options.batchSize || '100'),
+            maxTrainingSamples: parseInt(options.maxTraining || '10000'),
+            maxTestingSamples: parseInt(options.maxTesting || '2000'),
+            enableCaching: options.enableCaching || false,
+            dataSamplingStrategy: (options.sampling as any) || 'random'
+          };
+        } else {
+          // Basic mode
+          testConfig = {
+            tableName: options.table,
+            selectedColumns: options.columns?.split(',') || [],
+            queryColumn: options.query || '',
+            answerColumn: options.answer || '',
+            embeddingConfig: config.embedding,
+            metricType: options.metric as 'similarity' | 'brdr' || 'brdr',
+            trainingRatio: parseFloat(options.ratio || '0.8'),
+            testName: options.name || `Test_${new Date().toISOString().replace(/[:.]/g, '-')}`,
+            maxCombinations: parseInt(options.limit || '20')
+          };
+        }
       }
 
-      await runExperiment(testConfig, config);
+      // Run the appropriate experiment based on mode
+      const mode = options.mode || detectTestMode(options);
+      
+      if (mode === 'production') {
+        const db = new DatabaseConnection(config.database);
+        const embeddings = new EmbeddingGenerator(config.embedding);
+        const productionTester = new ProductionRAGTester(db, embeddings);
+        await productionTester.runProductionExperiment(testConfig as any);
+      } else if (mode === 'enhanced') {
+        const db = new DatabaseConnection(config.database);
+        const embeddings = new EmbeddingGenerator(config.embedding);
+        const enhancedTester = new EnhancedRAGTester(db, embeddings);
+        await enhancedTester.runEnhancedExperiment(testConfig as any);
+      } else {
+        // Basic mode
+        await runExperiment(testConfig, config);
+      }
 
     } catch (error) {
       console.error(chalk.red(`❌ Test failed: ${error instanceof Error ? error.message : String(error)}`));
       process.exit(1);
     }
   });
+
+// Helper function to detect test mode based on options
+function detectTestMode(options: any): 'basic' | 'enhanced' | 'production' {
+  if (options.cvFolds || options.timestampCol || options.minQueryLen || options.maxQueryLen) {
+    return 'production';
+  }
+  if (options.batchSize || options.maxTraining || options.maxTesting || options.enableCaching) {
+    return 'enhanced';
+  }
+  return 'basic';
+}
 
 async function interactiveTestSetup(): Promise<TestConfiguration> {
   console.log(chalk.bold('🧪 Interactive RAG Test Setup\n'));
