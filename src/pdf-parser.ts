@@ -83,6 +83,14 @@ export class PDFParser {
    */
   private async runPythonScript(pdfPath: string, outputDir: string): Promise<{ success: boolean; error?: string }> {
     return new Promise((resolve) => {
+      // Add timeout to prevent hanging
+      const timeout = setTimeout(() => {
+        resolve({
+          success: false,
+          error: 'Python script execution timed out after 30 seconds'
+        });
+      }, 30000); // 30 second timeout
+
       const options = {
         mode: 'text' as const,
         pythonPath: 'python',
@@ -93,13 +101,22 @@ export class PDFParser {
 
       const scriptName = path.basename(this.pythonScriptPath);
       
+      console.log(`  🔧 Executing Python script: ${scriptName}`);
+      console.log(`  📁 Script path: ${options.scriptPath}`);
+      console.log(`  🐍 Python path: ${options.pythonPath}`);
+      console.log(`  📄 Arguments: ${options.args.join(' ')}`);
+      
       PythonShell.run(scriptName, options)
         .then(() => {
+          clearTimeout(timeout);
+          console.log('  ✅ Python script completed successfully');
           resolve({
             success: true
           });
         })
         .catch((err: any) => {
+          clearTimeout(timeout);
+          console.log(`  ❌ Python script failed: ${err.message || err}`);
           resolve({
             success: false,
             error: `Python execution failed: ${err.message || err}`
