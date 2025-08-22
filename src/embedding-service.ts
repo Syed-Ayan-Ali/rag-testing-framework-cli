@@ -48,7 +48,10 @@ export class EmbeddingService {
       }
 
       // Check if embedding column already has data and warn user
+      spinner.text = 'Checking for existing embeddings...';
       const existingEmbeddingCount = await this.database.getColumnDataCount(task.tableName, task.embeddingColumn);
+      console.log(chalk.gray(`   Found ${existingEmbeddingCount} rows with existing embeddings`));
+      
       if (existingEmbeddingCount > 0) {
         spinner.stop();
         console.log(chalk.yellow(`⚠️  Warning: Column '${task.embeddingColumn}' already contains embeddings in ${existingEmbeddingCount} rows!`));
@@ -72,6 +75,7 @@ export class EmbeddingService {
         task.tableName,
         task.embeddingColumn
       );
+      console.log(chalk.gray(`   Found ${totalRowsToProcess} rows that need embeddings`));
 
       if (totalRowsToProcess === 0) {
         spinner.succeed(chalk.green(`✅ Column '${task.embeddingColumn}' already has all embeddings generated!`));

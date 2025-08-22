@@ -190,14 +190,38 @@ export class DatabaseConnection {
   ): Promise<any[]> {
     try {
       const selectColumns = ['id', ...sourceColumns, targetColumn];
-      const { data, error } = await this.supabase
+      
+      // Get rows where target column is null
+      const { data: nullData, error: nullError } = await this.supabase
         .from(tableName)
         .select(selectColumns.join(','))
-        .or(`${targetColumn}.is.null,${targetColumn}.eq.""`)
+        .is(targetColumn, null)
         .limit(limit);
 
-      if (error) throw error;
-      return data || [];
+      if (nullError) {
+        console.error(`Error getting null rows:`, nullError);
+        return [];
+      }
+
+      // Get rows where target column is empty string
+      const { data: emptyData, error: emptyError } = await this.supabase
+        .from(tableName)
+        .select(selectColumns.join(','))
+        .eq(targetColumn, '')
+        .limit(limit);
+
+      if (emptyError) {
+        console.error(`Error getting empty rows:`, emptyError);
+        return nullData || [];
+      }
+
+      // Combine and deduplicate results
+      const allRows = [...(nullData || []), ...(emptyData || [])];
+      const uniqueRows = allRows.filter((row, index, self) => 
+        index === self.findIndex(r => (r as any).id === (row as any).id)
+      );
+
+      return uniqueRows.slice(0, limit);
     } catch (error) {
       console.error(`Failed to get rows with empty column:`, error);
       return [];
@@ -218,14 +242,30 @@ export class DatabaseConnection {
 
   async getColumnDataCount(tableName: string, columnName: string): Promise<number> {
     try {
-      const { count, error } = await this.supabase
+      // First try to get count of non-null values
+      const { count: nonNullCount, error: nonNullError } = await this.supabase
         .from(tableName)
         .select('*', { count: 'exact', head: true })
-        .not(columnName, 'is', null)
-        .neq(columnName, '');
+        .not(columnName, 'is', null);
 
-      if (error) throw error;
-      return count || 0;
+      if (nonNullError) {
+        console.error(`Error counting non-null values:`, nonNullError);
+        return 0;
+      }
+
+      // Then try to get count of non-empty string values
+      const { count: nonEmptyCount, error: nonEmptyError } = await this.supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true })
+        .not(columnName, 'eq', '');
+
+      if (nonEmptyError) {
+        console.error(`Error counting non-empty values:`, nonEmptyError);
+        return nonNullCount || 0;
+      }
+
+      // Return the higher count (non-null count should be >= non-empty count)
+      return Math.max(nonNullCount || 0, nonEmptyCount || 0);
     } catch (error) {
       console.error(`Failed to get column data count:`, error);
       return 0;
@@ -234,13 +274,29 @@ export class DatabaseConnection {
 
   async getEmptyColumnCount(tableName: string, columnName: string): Promise<number> {
     try {
-      const { count, error } = await this.supabase
+      // Count rows where column is null OR empty string
+      // We need to use separate queries since Supabase doesn't support complex OR with count
+      const { count: nullCount, error: nullError } = await this.supabase
         .from(tableName)
         .select('*', { count: 'exact', head: true })
-        .or(`${columnName}.is.null,${columnName}.eq.""`);
+        .is(columnName, null);
 
-      if (error) throw error;
-      return count || 0;
+      if (nullError) {
+        console.error(`Error counting null values:`, nullError);
+        return 0;
+      }
+
+      const { count: emptyCount, error: emptyError } = await this.supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true })
+        .eq(columnName, '');
+
+      if (emptyError) {
+        console.error(`Error counting empty values:`, emptyError);
+        return nullCount || 0;
+      }
+
+      return (nullCount || 0) + (emptyCount || 0);
     } catch (error) {
       console.error(`Failed to get empty column count:`, error);
       return 0;
