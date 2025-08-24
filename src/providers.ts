@@ -21,11 +21,57 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
 
   async initialize(): Promise<void> {
     try {
+      const modelName = this.config.localModel || 'Xenova/all-MiniLM-L6-v2';
+      console.log(`🔄 Initializing local embedding model: ${modelName}`);
+      console.log(`🔧 Model configuration:`, {
+        configModel: this.config.localModel,
+        defaultModel: 'Xenova/all-MiniLM-L6-v2',
+        finalModel: modelName,
+        envModel: process.env.EMBEDDING_MODEL,
+        envLocalModel: process.env.LOCAL_EMBEDDING_MODEL
+      });
+      
+      // Ensure we're using the correct model name
+      if (!modelName.includes('all-MiniLM-L6-v2')) {
+        console.warn(`⚠️  Warning: Expected 'all-MiniLM-L6-v2' model, got '${modelName}'`);
+        console.warn(`   This might cause dimension mismatch issues.`);
+      }
+      
       const transformers = await eval('import("@xenova/transformers")');
+      console.log(`📦 Transformers library loaded successfully`);
+      
       this.pipeline = await transformers.pipeline(
         'feature-extraction',
-        this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
+        modelName
       );
+      console.log(`✅ Local embedding model initialized successfully`);
+      
+      // Test the model with a simple input to verify it's working
+      console.log(`🧪 Testing model with sample input...`);
+      const testResult = await this.pipeline('test');
+      console.log(`✅ Model test successful. Output shape:`, {
+        hasData: !!testResult.data,
+        dataType: typeof testResult.data,
+        dataLength: testResult.data ? (Array.isArray(testResult.data) ? testResult.data.length : 'not array') : 'no data'
+      });
+      
+      if (testResult.data && Array.isArray(testResult.data)) {
+        console.log(`✅ Expected 384 dimensions, got ${testResult.data.length}`);
+        if (testResult.data.length !== 384) {
+          console.warn(`⚠️  Warning: Model returned ${testResult.data.length} dimensions instead of expected 384`);
+          console.warn(`   This might indicate the wrong model was loaded or there's a configuration issue.`);
+          
+          // Try to determine what happened
+          if (testResult.data.length > 1000) {
+            console.warn(`   Large dimension count (${testResult.data.length}) suggests the model output is not being processed correctly.`);
+            console.warn(`   This could be due to a flattened 2D array or incorrect model loading.`);
+          }
+        }
+      } else {
+        console.warn(`⚠️  Warning: Model test result does not have expected structure`);
+        console.warn(`   Result:`, testResult);
+      }
+      
     } catch (error) {
       console.error('Failed to initialize local embedding model:', error);
       throw error;
@@ -37,8 +83,84 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
       throw new Error('Pipeline not initialized');
     }
 
-    const result = await this.pipeline(text);
-    return Array.isArray(result.data) ? result.data : Array.from(result.data);
+    try {
+      console.log(`   📝 Input text length: ${text.length} characters`);
+      const result = await this.pipeline(text);
+      
+      console.log(`   🔍 Raw model output:`, {
+        hasResult: !!result,
+        resultType: typeof result,
+        hasData: result && !!result.data,
+        dataType: result && result.data ? typeof result.data : 'no data',
+        dataLength: result && result.data ? (Array.isArray(result.data) ? result.data.length : 'not array') : 'no data'
+      });
+      
+      // Declare embedding variable
+      let embedding: number[];
+      
+      // If result.data is a 2D array, we need to handle it differently
+      if (result && result.data && Array.isArray(result.data) && result.data.length > 0 && Array.isArray(result.data[0])) {
+        console.log(`   🔍 Detected 2D array output: ${result.data.length}x${result.data[0].length}`);
+        console.log(`   🔍 This suggests the model is returning a batch of embeddings instead of a single embedding`);
+        
+        // Take the first embedding if it's a batch
+        if (result.data.length === 1) {
+          embedding = result.data[0];
+          console.log(`   ✅ Using first (and only) embedding from batch`);
+        } else {
+          console.warn(`   ⚠️  Model returned ${result.data.length} embeddings, using the first one`);
+          embedding = result.data[0];
+        }
+      } else {
+        // Extract the embedding data
+        if (result && result.data) {
+          // Handle different result formats
+          if (Array.isArray(result.data)) {
+            embedding = result.data;
+            console.log(`   ✅ Using result.data (array)`);
+          } else if (result.data.data) {
+            // Sometimes the data is nested
+            embedding = Array.from(result.data.data);
+            console.log(`   ✅ Using result.data.data (nested)`);
+          } else {
+            // Convert to array if it's a tensor-like object
+            embedding = Array.from(result.data);
+            console.log(`   ✅ Using result.data (converted to array)`);
+          }
+        } else if (Array.isArray(result)) {
+          embedding = result;
+          console.log(`   ✅ Using result directly (array)`);
+        } else {
+          // Fallback: try to convert the entire result
+          embedding = Array.from(result);
+          console.log(`   ✅ Using result (converted to array)`);
+        }
+      }
+
+      // Validate embedding dimensions
+      if (!Array.isArray(embedding) || embedding.length === 0) {
+        throw new Error(`Invalid embedding format: expected array, got ${typeof embedding}`);
+      }
+
+      // For All-MiniLM-L6-v2, we expect 384 dimensions
+      const expectedDimensions = 384;
+      if (embedding.length !== expectedDimensions) {
+        console.warn(`⚠️  Warning: Expected ${expectedDimensions} dimensions, got ${embedding.length}`);
+        console.warn(`   This might indicate a model loading issue.`);
+        
+        // If the embedding is too large, it might be a flattened 2D array
+        if (embedding.length > expectedDimensions * 10) {
+          console.warn(`   Large embedding detected (${embedding.length} dimensions).`);
+          console.warn(`   This suggests the model output is not being processed correctly.`);
+          throw new Error(`Expected ${expectedDimensions} dimensions, got ${embedding.length} - model may not be loaded correctly`);
+        }
+      }
+
+      return embedding;
+    } catch (error) {
+      console.error('Failed to generate embedding:', error);
+      throw error;
+    }
   }
 }
 

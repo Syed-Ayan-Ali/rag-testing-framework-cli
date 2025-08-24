@@ -47,19 +47,10 @@ export interface TestConfiguration {
   queryColumn: string;
   answerColumn: string;
   embeddingConfig: EmbeddingConfig;
-  metricType: string; // Now supports any registered metric
+  metricType: 'similarity' | 'brdr';
   trainingRatio: number;
   testName: string;
   maxCombinations?: number;
-}
-
-export interface EnhancedTestConfiguration extends TestConfiguration {
-  batchSize: number;
-  maxTrainingSamples: number;
-  maxTestingSamples: number;
-  enableCaching: boolean;
-  crossValidationFolds?: number;
-  dataSamplingStrategy: 'random' | 'stratified' | 'sequential';
 }
 
 export interface TestResult {
