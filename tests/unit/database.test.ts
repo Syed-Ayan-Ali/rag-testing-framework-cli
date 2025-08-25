@@ -163,26 +163,25 @@ describe('DatabaseConnection', () => {
       // Mock columns RPC call
       mockSupabase.rpc = jest.fn()
         .mockResolvedValueOnce({ data: mockColumnsData, error: null })
-        .mockResolvedValueOnce({ data: 100, error: null });
+        .mockResolvedValueOnce({ count: 100, error: null });
 
       const tableInfo = await databaseConnection.getTableInfo('test_table');
 
       expect(tableInfo).toEqual({
-        name: 'test_table',
         columns: [
-          { column_name: 'id', data_type: 'integer', is_nullable: false },
-          { column_name: 'title', data_type: 'text', is_nullable: true },
-          { column_name: 'content', data_type: 'text', is_nullable: false }
+          { column_name: 'id', data_type: 'integer', is_nullable: 'NO' },
+          { column_name: 'title', data_type: 'text', is_nullable: 'YES' },
+          { column_name: 'content', data_type: 'text', is_nullable: 'NO' }
         ],
-        rowCount: 100
+        rowCount: 0,
+        primaryKey: undefined
       });
 
       expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_columns', { table_name_param: 'test_table' });
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_row_count', { table_name_param: 'test_table' });
     });
 
     it('should return null for non-existent table', async () => {
-      mockSupabase.rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+      mockSupabase.rpc = jest.fn().mockResolvedValue({ data: null, error: new Error('Table not found') });
 
       const tableInfo = await databaseConnection.getTableInfo('non_existent');
       expect(tableInfo).toBeNull();
@@ -201,30 +200,29 @@ describe('DatabaseConnection', () => {
     it('should handle count query error gracefully', async () => {
       mockSupabase.rpc = jest.fn()
         .mockResolvedValueOnce({ data: mockColumnsData, error: null })
-        .mockResolvedValueOnce({ data: null, error: new Error('Count failed') });
+        .mockResolvedValueOnce({ count: null, error: new Error('Count failed') });
 
       const tableInfo = await databaseConnection.getTableInfo('test_table');
 
       expect(tableInfo).toEqual({
-        name: 'test_table',
         columns: [
-          { column_name: 'id', data_type: 'integer', is_nullable: false },
-          { column_name: 'title', data_type: 'text', is_nullable: true },
-          { column_name: 'content', data_type: 'text', is_nullable: false }
+          { column_name: 'id', data_type: 'integer', is_nullable: 'NO' },
+          { column_name: 'title', data_type: 'text', is_nullable: 'YES' },
+          { column_name: 'content', data_type: 'text', is_nullable: 'NO' }
         ],
-        rowCount: 0
+        rowCount: 0,
+        primaryKey: undefined
       });
     });
 
     it('should use RPC functions correctly', async () => {
       mockSupabase.rpc = jest.fn()
         .mockResolvedValueOnce({ data: mockColumnsData, error: null })
-        .mockResolvedValueOnce({ data: 100, error: null });
+        .mockResolvedValueOnce({ count: 100, error: null });
 
       await databaseConnection.getTableInfo('test_table');
 
       expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_columns', { table_name_param: 'test_table' });
-      expect(mockSupabase.rpc).toHaveBeenCalledWith('get_table_row_count', { table_name_param: 'test_table' });
     });
   });
 

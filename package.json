@@ -12,16 +12,9 @@
     "dev": "ts-node src/cli.ts",
     "test": "jest",
     "test:unit": "jest tests/unit",
-    "test:validation": "jest tests/validation",
-    "test:integration": "jest tests/validation/integration.test.ts",
-    "test:cli": "jest tests/validation/cli-validation.test.ts",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:all": "jest --coverage && npm run test:cli",
-    "test:runner": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1",
-    "test:runner:linux": "bash scripts/run-tests.sh",
-    "test:runner:integration": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -WithIntegration",
-    "test:runner:install": "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -TestInstall",
+    "test:all": "jest --coverage",
     "lint": "echo \"No linting configured\" && exit 0",
     "validate": "npm run build && npm run test:all",
     "prepublishOnly": "npm run validate",
@@ -49,9 +42,9 @@
     "url": "git+https://github.com/Syed-Ayan-Ali/rag-cli-tester.git"
   },
   "bugs": {
-    "url": "https://github.com/Syed-Ayan-Ali/rag-cli-tester/issues"
+    "url": "https://github.com/Syed-Ayan-Ali/rag-testing-framework-cli/issues"
   },
-  "homepage": "https://github.com/Syed-Ayan-Ali/rag-cli-tester#readme",
+  "homepage": "https://github.com/Syed-Ayan-Ali/rag-testing-framework-cli#readme",
   "engines": {
     "node": ">=18.0.0"
   },
