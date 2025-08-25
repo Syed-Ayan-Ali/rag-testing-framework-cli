@@ -4,9 +4,12 @@ export interface DatabaseConfig {
 }
 
 export interface EmbeddingConfig {
-  model: 'openai' | 'local';
+  model: 'openai' | 'local' | 'gemini';
   localModel?: string;
   openaiModel?: string;
+  openaiApiKey?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
 }
 
 export interface LLMConfig {
@@ -47,25 +50,12 @@ export interface TestConfiguration {
   queryColumn: string;
   answerColumn: string;
   embeddingConfig: EmbeddingConfig;
-  metricType: 'similarity' | 'brdr';
+  metricType: 'similarity' | 'brdr' | 'sql';
   trainingRatio: number;
   testName: string;
   seed?: number; // Optional seed for reproducible data splitting
 }
 
-<<<<<<< HEAD
-export interface EnhancedTestConfiguration extends TestConfiguration {
-  batchSize: number;
-  maxTrainingSamples: number;
-  maxTestingSamples: number;
-  enableCaching: boolean;
-  crossValidationFolds?: number;
-  dataSamplingStrategy: 'random' | 'stratified' | 'sequential';
-  // seed is inherited from TestConfiguration
-}
-
-=======
->>>>>>> main
 export interface TestResult {
   combination: ColumnCombination;
   averageScore: number;

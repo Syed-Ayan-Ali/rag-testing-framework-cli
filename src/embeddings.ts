@@ -125,10 +125,33 @@ export class EmbeddingGenerator {
 
   createContext(row: Record<string, any>, combination: ColumnCombination): string {
     const contextParts = combination.columns
-      .filter(col => row[col] !== null && row[col] !== undefined)
+      .filter(col => {
+        const value = row[col];
+        // More robust filtering - check for meaningful content
+        if (value === null || value === undefined) return false;
+
+        // Convert to string and check if it has meaningful content
+        let stringValue: string;
+        if (typeof value === 'object') {
+          stringValue = JSON.stringify(value);
+        } else {
+          stringValue = String(value);
+        }
+
+        // Check if the string has non-whitespace content
+        return stringValue.trim().length > 0 && stringValue !== '{}' && stringValue !== '[]';
+      })
       .map(col => {
         const value = row[col];
-        return `${col}: ${typeof value === 'object' ? JSON.stringify(value) : value}`;
+        let displayValue: string;
+
+        if (typeof value === 'object') {
+          displayValue = JSON.stringify(value);
+        } else {
+          displayValue = String(value);
+        }
+
+        return `${col}: ${displayValue}`;
       });
 
     return contextParts.join(' | ');

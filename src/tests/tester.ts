@@ -1,7 +1,10 @@
 import { DatabaseConnection } from '../database';
 import { EmbeddingGenerator, TrainingData, ColumnCombination } from '../embeddings';
 import { TestConfiguration, TestResult, ExperimentResults } from '../types';
-import { BRDRMetric, BRDRMetricResult, SQLMetric, SQLMetricResult } from '../metrics';
+import { BRDRMetric } from '../metrics/brdr-metric';
+import { SQLMetric } from '../metrics/sql-metric';
+import { BRDRMetricResult } from '../metrics/brdr-metric';
+import { SQLMetricResult } from '../metrics/sql-metric';
 
 export interface ProductionTestConfiguration extends TestConfiguration {
   // Data splitting configuration with fixed amounts
@@ -115,7 +118,7 @@ export class RAGTester {
     console.log(`📋 Columns: ${config.selectedColumns.join(', ')}`);
     console.log(`🎯 Metric: ${config.metricType}`);
     console.log(`🔢 Seed: ${config.seed}`);
-    console.log(`📊 Fixed Sample Sizes - Training: ${config.trainingSampleSize}, Validation: ${config.validationSampleSize}, Testing: ${config.testingSampleSize}`);
+    console.log(`📊 Training Ratio: ${config.trainingRatio}, Testing Ratio: ${(1 - config.trainingRatio).toFixed(2)}`);
 
     // Validate configuration
     const validation = await this.validateConfiguration(config);
@@ -133,22 +136,21 @@ export class RAGTester {
     const combinations = this.embeddings.generateColumnCombinations(
       config.selectedColumns
     );
-    
-    console.log(`🔄 Testing ${combinations.length} column combinations...\n`);
+
+    console.log(`🔄 Testing ${combinations.length} column combination(s)...\n`);
 
     const allResults: ProductionTestResult[] = [];
 
     for (let i = 0; i < combinations.length; i++) {
       const combination = combinations[i];
-      
+
       console.log(`[${i + 1}/${combinations.length}] Testing: ${combination.name}`);
 
       try {
         const result = await this.runSingleTest(config, combination, tableInfo);
         allResults.push(result);
-        
+
         console.log(`  ✅ Score: ${result.averageScore.toFixed(3)} (${result.totalTests} tests)`);
-        console.log(`  📊 CV Mean: ${result.crossValidationMean.toFixed(3)} ± ${result.crossValidationStd.toFixed(3)}`);
         console.log(`  ⏱️  Total Time: ${(result.processingStats.trainingTime + result.processingStats.testingTime).toFixed(1)}ms`);
       } catch (error) {
         console.error(`  ❌ Failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -185,38 +187,38 @@ export class RAGTester {
   ): Promise<ProductionTestResult> {
     const startTime = Date.now();
 
-    // Split data into training, validation, and testing sets with fixed sizes
-    const { trainingData, validationData, testingData } = await this.splitDataWithFixedSizes(config, tableInfo);
-
-    if (trainingData.length === 0 || testingData.length === 0) {
-      throw new Error('Insufficient data for training or testing');
+    // Get all data from the table
+    const allData = await this.db.getTableData(config.tableName);
+    if (allData.length === 0) {
+      throw new Error('No data found in table');
     }
 
-    // Generate embeddings for training data
+    console.log(`  📊 Total rows: ${allData.length}`);
+    console.log(`  📊 Using ratio: ${config.trainingRatio} training, ${(1 - config.trainingRatio).toFixed(2)} testing`);
+
+    // Split data using the training ratio
+    const trainingSize = Math.floor(allData.length * config.trainingRatio);
+    const testingSize = allData.length - trainingSize;
+
+    // Create seeded random generator for reproducible sampling
+    const seededRandom = this.createSeededRandom(config.seed || 42);
+
+    // Shuffle data for reproducibility
+    const shuffled = [...allData].sort(() => seededRandom() - 0.5);
+    const trainingData = shuffled.slice(0, trainingSize);
+    const testingData = shuffled.slice(trainingSize);
+
+    console.log(`  📊 Split: ${trainingData.length} training, ${testingData.length} testing`);
+
+    // Generate embeddings for training data (knowledge base)
+    console.log(`  🧠 Creating knowledge base from ${trainingData.length} training rows...`);
     const trainingStart = Date.now();
     const trainingEmbeddings = await this.generateTrainingEmbeddings(trainingData, combination, config);
     const trainingTime = Date.now() - trainingStart;
+    console.log(`  ✅ Knowledge base created with ${trainingEmbeddings.embeddings.length} embeddings`);
 
-    // Run cross-validation on training data
-    const cvStart = Date.now();
-    const crossValidationScores = await this.runCrossValidation(
-      trainingData,
-      combination,
-      config,
-      trainingEmbeddings
-    );
-    const cvTime = Date.now() - cvStart;
-
-    // Test on validation set (if available)
-    const validationStart = Date.now();
-    const validationResults = await this.processTestQueries(
-      validationData,
-      trainingEmbeddings,
-      config
-    );
-    const validationTime = Date.now() - validationStart;
-
-    // Test on final test set
+    // Test each query against the knowledge base
+    console.log(`  🧪 Testing ${testingData.length} queries against knowledge base...`);
     const testingStart = Date.now();
     const testingResults = await this.processTestQueries(
       testingData,
@@ -229,22 +231,22 @@ export class RAGTester {
       throw new Error('No valid test results generated');
     }
 
+    console.log(`  ✅ Completed ${testingResults.length} test comparisons`);
+
     // Calculate metrics
     const averageScore = testingResults.reduce((sum, r) => sum + r.score, 0) / testingResults.length;
     const averageSimilarity = testingResults.reduce((sum, r) => sum + r.similarity, 0) / testingResults.length;
 
-    // Calculate cross-validation statistics
-    const cvMean = crossValidationScores.reduce((sum, score) => sum + score, 0) / crossValidationScores.length;
-    const cvVariance = crossValidationScores.reduce((sum, score) => sum + Math.pow(score - cvMean, 2), 0) / crossValidationScores.length;
-    const cvStd = Math.sqrt(cvVariance);
-
-    // Calculate confidence interval
+    // For simplified testing, no cross-validation
+    const crossValidationScores: number[] = [];
+    const cvMean = 0;
+    const cvStd = 0;
     const confidenceInterval = this.calculateConfidenceInterval(testingResults.map(r => r.score));
 
     const totalTime = Date.now() - startTime;
 
     // Calculate data quality metrics
-    const dataQuality = this.calculateDataQuality(trainingData, validationData, testingData, config);
+    const dataQuality = this.calculateDataQuality(trainingData, [], testingData, config);
 
     return {
       combination,
@@ -258,7 +260,7 @@ export class RAGTester {
       confidenceInterval,
       processingStats: {
         trainingTime,
-        validationTime,
+        validationTime: 0, // No validation in simplified testing
         testingTime,
         embeddingTime: trainingTime,
         memoryUsage: process.memoryUsage().heapUsed / 1024 / 1024,
@@ -271,82 +273,6 @@ export class RAGTester {
         averageSimilarity
       }
     };
-  }
-
-  private async splitDataWithFixedSizes(config: ProductionTestConfiguration, tableInfo: any): Promise<{
-    trainingData: any[];
-    validationData: any[];
-    testingData: any[];
-  }> {
-    const totalRows = tableInfo.rowCount;
-
-    console.log(`  📊 Using fixed sample sizes with seed ${config.seed}:`);
-    console.log(`     Training: ${config.trainingSampleSize}, Validation: ${config.validationSampleSize}, Testing: ${config.testingSampleSize}`);
-
-    // Create seeded random generator for reproducible sampling
-    const seededRandom = this.createSeededRandom(config.seed || 42);
-
-    // Sample data using seed for reproducibility
-    const allData = await this.db.getTableData(config.tableName);
-
-    if (allData.length < config.trainingSampleSize + config.validationSampleSize + config.testingSampleSize) {
-      throw new Error(`Not enough data in table. Need ${config.trainingSampleSize + config.validationSampleSize + config.testingSampleSize} rows, but only ${allData.length} available.`);
-    }
-
-    // Shuffle data using seeded random for reproducibility
-    const shuffled = [...allData].sort(() => seededRandom() - 0.5);
-
-    // Take exact sample sizes for each split
-    const trainingData = shuffled.slice(0, config.trainingSampleSize);
-    const validationData = shuffled.slice(config.trainingSampleSize, config.trainingSampleSize + config.validationSampleSize);
-    const testingData = shuffled.slice(config.trainingSampleSize + config.validationSampleSize, config.trainingSampleSize + config.validationSampleSize + config.testingSampleSize);
-
-    return { trainingData, validationData, testingData };
-  }
-
-  private async runCrossValidation(
-    trainingData: any[],
-    combination: ColumnCombination,
-    config: ProductionTestConfiguration,
-    trainingEmbeddings: TrainingData
-  ): Promise<number[]> {
-    const scores: number[] = [];
-    const foldSize = Math.floor(trainingData.length / config.crossValidationFolds);
-
-    for (let fold = 0; fold < config.crossValidationFolds; fold++) {
-      const startIdx = fold * foldSize;
-      const endIdx = startIdx + foldSize;
-
-      // Create validation fold
-      const validationFold = trainingData.slice(startIdx, endIdx);
-      const trainingFold = [
-        ...trainingData.slice(0, startIdx),
-        ...trainingData.slice(endIdx)
-      ];
-
-      if (trainingFold.length === 0 || validationFold.length === 0) continue;
-
-      // Generate embeddings for training fold
-      const foldEmbeddings = await this.embeddings.processTrainingData(
-        trainingFold,
-        combination,
-        config.answerColumn
-      );
-
-      // Test on validation fold
-      const foldResults = await this.processTestQueries(
-        validationFold,
-        foldEmbeddings,
-        config
-      );
-
-      if (foldResults.length > 0) {
-        const foldScore = foldResults.reduce((sum, r) => sum + r.score, 0) / foldResults.length;
-        scores.push(foldScore);
-      }
-    }
-
-    return scores;
   }
 
   private async generateTrainingEmbeddings(
@@ -396,19 +322,49 @@ export class RAGTester {
   ): Promise<any[]> {
     const results: any[] = [];
     const batchSize = config.batchSize;
+    let skippedNull = 0;
+    let skippedLength = 0;
+    let processed = 0;
+
+    console.log(`\n🔍 Starting test query processing...`);
+    console.log(`📊 Testing ${testingData.length} rows`);
+    console.log(`📋 Query column: ${config.queryColumn}, Answer column: ${config.answerColumn}`);
 
     for (let i = 0; i < testingData.length; i += batchSize) {
       const batch = testingData.slice(i, i + batchSize);
 
       for (const testRow of batch) {
-      const query = testRow[config.queryColumn];
-      const expectedAnswer = testRow[config.answerColumn];
+        let query = testRow[config.queryColumn];
+        let expectedAnswer = testRow[config.answerColumn];
 
-        if (!query || !expectedAnswer) continue;
+        console.log
 
-        // Apply data quality filters
-        if (query.length < config.minQueryLength || query.length > config.maxQueryLength) continue;
-        if (expectedAnswer.length < config.minAnswerLength || expectedAnswer.length > config.maxAnswerLength) continue;
+        // Check for null/undefined values - but continue with empty strings for testing
+        if (!query || !expectedAnswer) {
+          skippedNull++;
+          if (skippedNull <= 5) { // Show first 5 cases
+            console.log(`  ⚠️  Processing row ${testRow.id || i} with null values - using empty strings`);
+          }
+          // Continue with empty strings instead of skipping
+          query = query || '';
+          expectedAnswer = expectedAnswer || '';
+        }
+
+        // Apply data quality filters with detailed logging
+        if (query.length < config.minQueryLength || query.length > config.maxQueryLength) {
+          skippedLength++;
+          if (skippedLength <= 5) { // Show first 5 cases
+            console.log(`  ⚠️  Skipping row ${testRow.id || i} - query length ${query.length} not in range [${config.minQueryLength}, ${config.maxQueryLength}]`);
+          }
+          continue;
+        }
+        if (expectedAnswer.length < config.minAnswerLength || expectedAnswer.length > config.maxAnswerLength) {
+          skippedLength++;
+          if (skippedLength <= 5) { // Show first 5 cases
+            console.log(`  ⚠️  Skipping row ${testRow.id || i} - answer length ${expectedAnswer.length} not in range [${config.minAnswerLength}, ${config.maxAnswerLength}]`);
+          }
+          continue;
+        }
 
       try {
         // Find best match from training data

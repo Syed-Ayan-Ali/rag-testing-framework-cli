@@ -10,13 +10,9 @@ import * as path from 'path';
 import { ConfigManager } from './config';
 import { DatabaseConnection } from './database';
 import { EmbeddingGenerator } from './embeddings';
-<<<<<<< HEAD
 import { RAGTester, ProductionTestConfiguration } from './tests/tester';
-import { TestConfiguration, ExperimentResults, EnhancedTestConfiguration } from './types';
-=======
-import { RAGTester } from './tester';
-import { TestConfiguration, ExperimentResults } from './types';
->>>>>>> main
+import { ExperimentResults } from './types';
+import { multipleQueryPrompt, singleQueryPrompt } from './prompts';
 
 const program = new Command();
 
@@ -28,10 +24,6 @@ program
   .description('CLI tool for testing RAG systems with different embedding combinations')
   .version(packageJson.version);
 
-<<<<<<< HEAD
-
-=======
->>>>>>> main
 // Configure command
 program
   .command('configure')
@@ -69,7 +61,6 @@ program
     }
   });
 
-<<<<<<< HEAD
 // List available metrics
 program
   .command('metrics')
@@ -93,8 +84,6 @@ program
     }
   });
 
-=======
->>>>>>> main
 // List tables command
 program
   .command('tables')
@@ -217,11 +206,7 @@ program
   .option('-c, --columns <columns>', 'Comma-separated list of columns for embeddings')
   .option('-q, --query <column>', 'Column containing queries')
   .option('-a, --answer <column>', 'Column containing expected answers')
-<<<<<<< HEAD
   .option('-m, --metric <type>', 'Metric type (brdr|sql)', 'brdr')
-=======
-  .option('-m, --metric <type>', 'Metric type (similarity|brdr)', 'similarity')
->>>>>>> main
   .option('-r, --ratio <number>', 'Training ratio (0-1)', '0.8')
   .option('-n, --name <name>', 'Test name')
   .option('-l, --limit <number>', 'Max combinations to test', '20')
@@ -254,10 +239,10 @@ program
           batchSize: 100,
           enableCaching: false,
           crossValidationFolds: 5,
-          minQueryLength: 10,
-          maxQueryLength: 500,
-          minAnswerLength: 10,
-          maxAnswerLength: 1000,
+          minQueryLength: 1,
+          maxQueryLength: 10000,
+          minAnswerLength: 1,
+          maxAnswerLength: 50000,
           samplingStrategy: 'random',
           seed: options.seed ? parseInt(options.seed) : undefined
         };
@@ -367,15 +352,16 @@ async function interactiveTestSetup(): Promise<ProductionTestConfiguration> {
     }
   });
 
-  const moreAnswers = {
-    ...columnSelection,
-    ...querySelection,
-    ...answerSelection,
-    ...metricSelection,
-    ...ratioInput,
-    ...nameInput,
-    ...seedInput
-  };
+  const limitInput = await inquirer.prompt({
+    type: 'input',
+    name: 'maxCombinations',
+    message: 'Max combinations to test:',
+    default: '20',
+    validate: (input: any) => {
+      const num = parseInt(input);
+      return !isNaN(num) && num > 0 || 'Must be a positive number';
+    }
+  });
 
   return {
     tableName: answers.tableName,
@@ -391,7 +377,6 @@ async function interactiveTestSetup(): Promise<ProductionTestConfiguration> {
     validationSampleSize: 1000, // Fixed validation sample size
     testingSampleSize: 2000, // Fixed testing sample size
     testName: (nameInput as any).testName,
-<<<<<<< HEAD
     batchSize: 100,
     enableCaching: false,
     crossValidationFolds: 5,
@@ -404,15 +389,7 @@ async function interactiveTestSetup(): Promise<ProductionTestConfiguration> {
   };
 }
 
-
 async function runExperiment(testConfig: ProductionTestConfiguration, config: any) {
-=======
-    maxCombinations: parseInt((limitInput as any).maxCombinations)
-  };
-}
-
-async function runExperiment(testConfig: TestConfiguration, config: any) {
->>>>>>> main
   const spinner = ora('Initializing RAG Tester...').start();
 
   try {
@@ -651,8 +628,6 @@ program
         provider = provider || availableProviders.embedding[0];
       }
 
-<<<<<<< HEAD
-=======
       // Create embedding service
       const embeddingConfig = configManager.createEmbeddingConfig(provider);
       const { EmbeddingService } = await import('./embedding-service');
@@ -668,7 +643,6 @@ program
         batchSize: parseInt(options.batchSize) || 50
       };
 
->>>>>>> main
       console.log(chalk.blue('\n📊 Embedding Generation Task:'));
       console.log(`  Table: ${tableName}`);
       console.log(`  Columns: ${columns.join(', ')}`);
@@ -676,8 +650,100 @@ program
       console.log(`  Provider: ${provider}`);
       console.log(`  Batch Size: ${parseInt(options.batchSize) || 50}\n`);
 
-      console.log(chalk.yellow('⚠️  This feature requires the embedding service which has been removed.'));
-      console.log(chalk.yellow('   Please use the test command instead to generate embeddings.'));
+      console.log(`\n🔄 Starting embedding generation process...`);
+
+      try {
+        // Get data from table
+        console.log(`📊 Fetching data from ${tableName}...`);
+        const tableData = await database.getTableData(tableName);
+
+        if (tableData.length === 0) {
+          console.log(chalk.yellow(`⚠️  No data found in table '${tableName}'`));
+          return;
+        }
+
+        console.log(`📊 Found ${tableData.length} rows to process`);
+
+        // Initialize embedding generator
+        const embeddingConfig: any = {
+          model: provider === 'local' ? 'local' : 'openai',
+          localModel: provider === 'local' ? 'Xenova/all-MiniLM-L6-v2' : undefined,
+          openaiModel: provider !== 'local' ? 'text-embedding-3-small' : undefined
+        };
+
+        const embeddings = new EmbeddingGenerator(embeddingConfig);
+        await embeddings.initialize();
+
+        // Generate column combination for embedding
+        const combination = {
+          columns: columns,
+          name: columns.join('_')
+        };
+
+        // Process each row individually
+        let processedCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+
+        console.log(`\n🔄 Processing ${tableData.length} rows individually...`);
+
+        for (let i = 0; i < tableData.length; i++) {
+          const row = tableData[i];
+          try {
+            console.log(`\n🔄 Processing row ${i + 1}/${tableData.length} (ID: ${row.id})`);
+
+            const context = columns
+              .map(col => row[col])
+              .filter(val => val !== null && val !== undefined)
+              .join(' [SEP] ');
+
+            if (!context || context.trim() === '') {
+              console.log(`  ⚠️  Skipping row ${row.id} - empty context`);
+              continue;
+            }
+
+            // Generate embedding
+            const embedding = await embeddings.generateEmbedding(context);
+
+            if (embedding && embedding.length > 0) {
+              // Convert embedding array to PostgreSQL vector format
+              const vectorString = `[${embedding.join(',')}]`;
+
+              // Update the embedding column in the database
+              await database.updateRowColumn(tableName, row.id, embeddingColumn, vectorString);
+
+              successCount++;
+              console.log(`  ✅ Updated row ${row.id} with ${embedding.length}-dimensional embedding`);
+            } else {
+              console.log(`  ⚠️  Failed to generate embedding for row ${row.id}`);
+            }
+
+            processedCount++;
+
+          } catch (rowError: any) {
+            errorCount++;
+            console.error(`  ❌ Failed to process row ${row.id}: ${rowError.message}`);
+            continue;
+          }
+
+          // Progress update every 10 rows
+          if ((i + 1) % 10 === 0) {
+            console.log(`  📊 Progress: ${i + 1}/${tableData.length} rows processed (${successCount} successful, ${errorCount} errors)`);
+          }
+        }
+
+        console.log(chalk.green('\n✅ Embedding generation completed successfully!'));
+        console.log(`📊 Summary:`);
+        console.log(`  • Total rows: ${tableData.length}`);
+        console.log(`  • Processed: ${processedCount}`);
+        console.log(`  • Successful: ${successCount}`);
+        console.log(`  • Errors: ${errorCount}`);
+        console.log(`  • Success rate: ${((successCount / processedCount) * 100).toFixed(1)}%`);
+        console.log(`\n💾 Check your database table '${tableName}' column '${embeddingColumn}' for the generated embeddings.`);
+
+      } catch (embeddingError: any) {
+        console.error(chalk.red(`❌ Embedding generation failed: ${embeddingError.message}`));
+      }
 
     } catch (error: any) {
       spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
@@ -824,12 +890,20 @@ program
       const promptType = options.promptType;
       
       if (!prompt) {
-        if (promptType === 'custom') {
+        if (promptType === 'nlp_chunk_description') {
           const { customPrompt } = await inquirer.prompt([{
             type: 'input',
             name: 'customPrompt',
             message: 'Enter custom prompt for LLM:',
-            default: 'generate a list of 5 queries in json format, in the format: {[q1: "", q2:"", ...]}, using the given content. The queries will be used to fill a column in a database table called "nlp_chunk_description." This column will contain a list of queries that the user may ask for which the content is the answer. Since the content is a chunk, it may be that queries can only be answered by combining different chunks together so even though the query cannot be answered ocompletely by the content, the query should be added to the list. An example fo this would be "What are the basel iii requirements for tier 1 banks in hong kong?". This query cannot be answered using one chunk. It needs to be answered by combining different chunks together. The query should be added to the list of every chunk that is relevantto basel, hong kong, and tier 1 banks and other relevant keywords.'
+            default: multipleQueryPrompt,
+          }]);
+          prompt = customPrompt;
+        } else if (promptType === 'chunk_description') {
+          const { customPrompt } = await inquirer.prompt([{
+            type: 'input',
+            name: 'customPrompt',
+            message: 'Enter custom prompt for LLM:',
+            default: singleQueryPrompt,
           }]);
           prompt = customPrompt;
         } else {
@@ -851,9 +925,10 @@ program
       // Create LLM config based on provider
       let llmConfig: any;
       if (provider === 'custom') {
-        // Use the custom Qwen model
+        // Use the custom Qwen model with fallback text processing
         llmConfig = CustomLLMService.createQwenModelConfig();
-        console.log(`  Using Custom Model: ${llmConfig.customModel}`);
+        console.log(`  Using Custom Model: ${llmConfig.model}`);
+        console.log(`  Note: Will use text processing fallback if API fails`);
       } else {
         // Use standard providers
         llmConfig = {
@@ -864,9 +939,32 @@ program
         };
       }
 
-      console.log(`\n🔄 Starting column population process...`);
+        console.log(`\n🔄 Starting column population process...`);
 
       try {
+        // Check if target column already has data
+        console.log(`🔍 Checking if target column '${targetColumn}' already has data...`);
+        const totalRows = (await database.getTableData(tableName, ['id'])).length;
+        const emptyCount = await database.getEmptyColumnCount(tableName, targetColumn);
+        const filledCount = totalRows - emptyCount;
+
+        if (filledCount > 0) {
+          console.log(chalk.yellow(`⚠️  Target column '${targetColumn}' already has data in ${filledCount} rows.`));
+          const { overwrite } = await inquirer.prompt([{
+            type: 'confirm',
+            name: 'overwrite',
+            message: `Do you want to overwrite the existing data in column '${targetColumn}'?`,
+            default: false
+          }]);
+          
+          if (!overwrite) {
+            console.log(chalk.gray('Operation cancelled by user.'));
+            return;
+          }
+          
+          console.log(chalk.yellow(`⚠️  Proceeding with overwrite of ${filledCount} rows...`));
+        }
+
         // Import database operations for column population
         const populationTask = {
           tableName,
@@ -877,8 +975,74 @@ program
           batchSize: parseInt(options.batchSize) || 10
         };
 
-        console.log(chalk.green('✅ Column population completed successfully!'));
-        console.log(`   Check your database table '${tableName}' column '${targetColumn}' for the populated content.`);
+        // Get data from source column
+        console.log(`📊 Fetching data from ${sourceColumn}...`);
+        const sourceData = await database.getTableData(tableName);
+
+        if (sourceData.length === 0) {
+          console.log(chalk.yellow(`⚠️  No data found in table '${tableName}'`));
+          return;
+        }
+
+        console.log(`📊 Found ${sourceData.length} rows to process`);
+
+        // Process each row individually instead of in batches
+        let processedCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+
+        console.log(`\n🔄 Processing ${sourceData.length} rows individually...`);
+
+        for (let i = 0; i < sourceData.length; i++) {
+          const row = sourceData[i];
+          try {
+            const sourceContent = row[sourceColumn];
+            if (!sourceContent || sourceContent.trim() === '') {
+              console.log(`  ⚠️  Skipping row ${row.id} - empty source content`);
+              continue;
+            }
+
+            // Generate content using LLM - pass source content as context
+            const generationPrompt = `${prompt}\n\nContext:\n${sourceContent}`;
+            console.log(`\n📄 Processing row ${row.id} with content:`, sourceContent.substring(0, 200) + '...');
+            const llmService = new CustomLLMService(llmConfig);
+            const response = await llmService.generateCompletion(generationPrompt, 500);
+
+            if (response.content && response.content.trim() !== '') {
+              // Update the target column in the database
+              await database.updateRowColumn(tableName, row.id, targetColumn, response.content.trim());
+
+              successCount++;
+              console.log(`  ✅ Updated row ${row.id}`);
+            } else {
+              console.log(`  ⚠️  Empty response for row ${row.id}`);
+            }
+
+            processedCount++;
+
+            // Add small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+          } catch (rowError: any) {
+            errorCount++;
+            console.error(`  ❌ Failed to process row ${row.id}: ${rowError.message}`);
+            continue;
+          }
+
+          // Progress update every 10 rows
+          if ((i + 1) % 10 === 0) {
+            console.log(`  📊 Progress: ${i + 1}/${sourceData.length} rows processed (${successCount} successful, ${errorCount} errors)`);
+          }
+        }
+
+        console.log(chalk.green('\n✅ Column population completed successfully!'));
+        console.log(`📊 Summary:`);
+        console.log(`  • Total rows: ${sourceData.length}`);
+        console.log(`  • Processed: ${processedCount}`);
+        console.log(`  • Successful: ${successCount}`);
+        console.log(`  • Errors: ${errorCount}`);
+        console.log(`  • Success rate: ${((successCount / processedCount) * 100).toFixed(1)}%`);
+        console.log(`\n💾 Check your database table '${tableName}' column '${targetColumn}' for the populated content.`);
 
       } catch (populationError: any) {
         console.error(chalk.red(`❌ Column population failed: ${populationError.message}`));

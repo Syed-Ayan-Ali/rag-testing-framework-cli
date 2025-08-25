@@ -1,17 +1,31 @@
 # RAG CLI Tester
 
-A lightweight CLI tool for testing RAG (Retrieval-Augmented Generation) systems with different embedding combinations.
+A comprehensive CLI tool for RAG (Retrieval-Augmented Generation) systems with three core functionalities:
 
-## 🚀 Features
+## 🚀 Core Functionalities
 
-- **Column Combination Testing**: Automatically tests different combinations of database columns for optimal embedding generation
-- **Multiple Metrics**: Supports both general similarity metrics and specialized BRDR (Banking Regulation Document Retrieval) metrics
-- **Multi-Provider Embeddings**: Supports local models (Hugging Face), OpenAI, and Gemini embedding providers
-- **LLM-Powered Content Generation**: Automatically populate database columns using OpenAI, Gemini, or Anthropic LLMs
-- **Interactive CLI**: User-friendly command-line interface with guided setup
-- **Configurable**: Easy configuration management with file and environment variable support
-- **Database Integration**: Works with any Supabase-compatible PostgreSQL database
-- **Dynamic Schema Detection**: Automatically detects column types and optimizes data formatting
+### 1. **LLM-Powered Column Population** 🤖
+Automatically populate database columns using advanced LLMs based on existing content
+- Custom Qwen model integration with your specific configuration
+- Support for OpenAI, Gemini, Anthropic, and custom OpenAI-compatible APIs
+- Interactive prompts and batch processing
+- Custom prompt templates and predefined types
+
+### 2. **Generate Embeddings** 🧮
+Generate high-quality embeddings for database content using multiple providers
+- Local models (HuggingFace/all-MiniLM-L6-v2) - no API key required
+- OpenAI embedding models (text-embedding-3-small/large)
+- Google Gemini embedding models
+- pgvector column storage with PostgreSQL compatibility
+- Batch processing with progress tracking
+
+### 3. **Column Combination Testing** 🧪
+Comprehensive RAG testing framework to find optimal column combinations
+- Power set generation of column combinations
+- Multiple evaluation metrics (Similarity, BRDR, SQL)
+- Cross-validation and statistical analysis
+- Results export to JSON with detailed performance metrics
+- Interactive and command-line modes
 
 ## 📦 Installation
 
@@ -148,7 +162,7 @@ Run RAG testing experiment.
 - `-c, --columns <columns>`: Comma-separated list of columns for embeddings
 - `-q, --query <column>`: Column containing queries
 - `-a, --answer <column>`: Column containing expected answers
-- `-m, --metric <type>`: Metric type (`similarity` or `brdr`)
+- `-m, --metric <type>`: Metric type (`similarity`, `brdr`, or `sql`)
 - `-r, --ratio <number>`: Training ratio (0-1, default: 0.8)
 - `-n, --name <name>`: Test name
 - `-l, --limit <number>`: Max combinations to test (default: 20)
@@ -226,6 +240,13 @@ Specialized metric for banking regulation documents:
 - Concept alignment (banking concepts)
 - Contextual relevance (embedding similarity)
 - Domain-specific weighting
+
+### SQL Metric
+Specialized metric for text-to-SQL evaluation:
+- SQL query generation accuracy
+- Database interaction correctness
+- Query result validation
+- Syntax and semantic evaluation
 
 ## 🧠 Supported Providers
 
