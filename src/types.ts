@@ -47,12 +47,13 @@ export interface TestConfiguration {
   queryColumn: string;
   answerColumn: string;
   embeddingConfig: EmbeddingConfig;
-  metricType: string; // Now supports any registered metric
+  metricType: 'similarity' | 'brdr';
   trainingRatio: number;
   testName: string;
   seed?: number; // Optional seed for reproducible data splitting
 }
 
+<<<<<<< HEAD
 export interface EnhancedTestConfiguration extends TestConfiguration {
   batchSize: number;
   maxTrainingSamples: number;
@@ -63,6 +64,8 @@ export interface EnhancedTestConfiguration extends TestConfiguration {
   // seed is inherited from TestConfiguration
 }
 
+=======
+>>>>>>> main
 export interface TestResult {
   combination: ColumnCombination;
   averageScore: number;

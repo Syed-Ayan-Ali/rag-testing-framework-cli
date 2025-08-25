@@ -10,8 +10,13 @@ import * as path from 'path';
 import { ConfigManager } from './config';
 import { DatabaseConnection } from './database';
 import { EmbeddingGenerator } from './embeddings';
+<<<<<<< HEAD
 import { RAGTester, ProductionTestConfiguration } from './tests/tester';
 import { TestConfiguration, ExperimentResults, EnhancedTestConfiguration } from './types';
+=======
+import { RAGTester } from './tester';
+import { TestConfiguration, ExperimentResults } from './types';
+>>>>>>> main
 
 const program = new Command();
 
@@ -23,7 +28,10 @@ program
   .description('CLI tool for testing RAG systems with different embedding combinations')
   .version(packageJson.version);
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> main
 // Configure command
 program
   .command('configure')
@@ -61,6 +69,7 @@ program
     }
   });
 
+<<<<<<< HEAD
 // List available metrics
 program
   .command('metrics')
@@ -84,6 +93,8 @@ program
     }
   });
 
+=======
+>>>>>>> main
 // List tables command
 program
   .command('tables')
@@ -206,7 +217,11 @@ program
   .option('-c, --columns <columns>', 'Comma-separated list of columns for embeddings')
   .option('-q, --query <column>', 'Column containing queries')
   .option('-a, --answer <column>', 'Column containing expected answers')
+<<<<<<< HEAD
   .option('-m, --metric <type>', 'Metric type (brdr|sql)', 'brdr')
+=======
+  .option('-m, --metric <type>', 'Metric type (similarity|brdr)', 'similarity')
+>>>>>>> main
   .option('-r, --ratio <number>', 'Training ratio (0-1)', '0.8')
   .option('-n, --name <name>', 'Test name')
   .option('-l, --limit <number>', 'Max combinations to test', '20')
@@ -376,6 +391,7 @@ async function interactiveTestSetup(): Promise<ProductionTestConfiguration> {
     validationSampleSize: 1000, // Fixed validation sample size
     testingSampleSize: 2000, // Fixed testing sample size
     testName: (nameInput as any).testName,
+<<<<<<< HEAD
     batchSize: 100,
     enableCaching: false,
     crossValidationFolds: 5,
@@ -390,6 +406,13 @@ async function interactiveTestSetup(): Promise<ProductionTestConfiguration> {
 
 
 async function runExperiment(testConfig: ProductionTestConfiguration, config: any) {
+=======
+    maxCombinations: parseInt((limitInput as any).maxCombinations)
+  };
+}
+
+async function runExperiment(testConfig: TestConfiguration, config: any) {
+>>>>>>> main
   const spinner = ora('Initializing RAG Tester...').start();
 
   try {
@@ -628,6 +651,24 @@ program
         provider = provider || availableProviders.embedding[0];
       }
 
+<<<<<<< HEAD
+=======
+      // Create embedding service
+      const embeddingConfig = configManager.createEmbeddingConfig(provider);
+      const { EmbeddingService } = await import('./embedding-service');
+      const embeddingService = new EmbeddingService(database, embeddingConfig);
+      
+      await embeddingService.initialize();
+
+      const task = {
+        tableName,
+        columns,
+        customOrder: options.customOrder || false,
+        embeddingColumn,
+        batchSize: parseInt(options.batchSize) || 50
+      };
+
+>>>>>>> main
       console.log(chalk.blue('\n📊 Embedding Generation Task:'));
       console.log(`  Table: ${tableName}`);
       console.log(`  Columns: ${columns.join(', ')}`);

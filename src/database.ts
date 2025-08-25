@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { DatabaseConfig, TableInfo } from './types';
+import chalk from 'chalk';
 
 export class DatabaseConnection {
   private supabase: SupabaseClient;
@@ -41,37 +42,52 @@ export class DatabaseConnection {
     }
   }
 
-  async getTableInfo(tableName: string): Promise<TableInfo | null> {
+  async getTableInfo(tableName: string): Promise<{
+    columns: Array<{ column_name: string; data_type: string; is_nullable: string }>;
+    rowCount: number;
+    primaryKey?: string;
+  } | null> {
     try {
-      // Get column information using RPC function
+      // Get column information
       const { data: columnsData, error: columnsError } = await this.supabase
         .rpc('get_table_columns', { table_name_param: tableName });
 
-      if (columnsError) throw columnsError;
-
-      if (!columnsData || columnsData.length === 0) {
+      if (columnsError) {
+        console.error('Error getting table columns:', columnsError);
         return null;
       }
 
-      // Get row count using RPC function
-      const { data: rowCount, error: countError } = await this.supabase
-        .rpc('get_table_row_count', { table_name_param: tableName });
+      // Get row count
+      const { count, error: countError } = await this.supabase
+        .from(tableName)
+        .select('*', { count: 'exact', head: true });
 
       if (countError) {
-        console.warn(`Could not get row count for ${tableName}:`, countError);
+        console.error('Error getting row count:', countError);
+        return null;
+      }
+
+      // Try to get primary key information
+      let primaryKey: string | undefined;
+      try {
+        const { data: pkData, error: pkError } = await this.supabase
+          .rpc('get_primary_key', { table_name_param: tableName });
+        
+        if (!pkError && pkData) {
+          primaryKey = pkData;
+        }
+      } catch (e) {
+        // Primary key function might not exist, that's okay
+        console.log(chalk.gray(`   Note: Could not determine primary key for table ${tableName}`));
       }
 
       return {
-        name: tableName,
-        columns: columnsData.map((row: any) => ({
-          column_name: row.column_name,
-          data_type: row.data_type,
-          is_nullable: row.is_nullable === 'YES'
-        })),
-        rowCount: rowCount || 0
+        columns: columnsData || [],
+        rowCount: count || 0,
+        primaryKey
       };
     } catch (error) {
-      console.error(`Failed to get table info for ${tableName}:`, error);
+      console.error('Failed to get table info:', error);
       return null;
     }
   }
@@ -124,13 +140,14 @@ export class DatabaseConnection {
     tableName: string, 
     rowId: any, 
     embeddingColumn: string, 
-    embedding: number[]
+    embedding: number[],
+    idColumn: string = 'id'
   ): Promise<boolean> {
     try {
       const { error } = await this.supabase
         .from(tableName)
         .update({ [embeddingColumn]: embedding })
-        .eq('id', rowId);
+        .eq(idColumn, rowId);
 
       if (error) throw error;
       return true;
@@ -167,15 +184,72 @@ export class DatabaseConnection {
     limit: number = 100
   ): Promise<any[]> {
     try {
-      const selectColumns = ['id', ...sourceColumns];
+      // Get table info to determine the primary key column
+      const tableInfo = await this.getTableInfo(tableName);
+      if (!tableInfo) {
+        throw new Error(`Could not get table info for ${tableName}`);
+      }
+
+      // Also get the actual table structure to debug
+      await this.getTableStructure(tableName);
+
+      // Use primary key if available, otherwise fall back to 'id'
+      const idColumn = tableInfo.primaryKey || 'id';
+      console.log(`🔍 Fetching all rows from table... (using ID column: ${idColumn})`);
+      
+      // Ensure id column is always included and properly selected
+      const selectColumns = [idColumn, ...sourceColumns];
+      console.log(`📋 Selecting columns: ${selectColumns.join(', ')}`);
+      console.log(`🔍 Query: SELECT ${selectColumns.join(', ')} FROM ${tableName} WHERE ${embeddingColumn} IS NULL LIMIT ${limit}`);
+      
       const { data, error } = await this.supabase
         .from(tableName)
         .select(selectColumns.join(','))
         .is(embeddingColumn, null)
         .limit(limit);
 
-      if (error) throw error;
-      return data || [];
+      if (error) {
+        console.error(`Database error:`, error);
+        throw error;
+      }
+      
+      console.log(`📊 Raw database response:`, {
+        hasData: !!data,
+        dataType: typeof data,
+        dataLength: data ? data.length : 'no data',
+        firstRow: data && data.length > 0 ? data[0] : 'no rows'
+      });
+      
+      if (!data || data.length === 0) {
+        console.log(`📊 Found 0 rows to process`);
+        return [];
+      }
+
+      // Validate that each row has an id
+      const validRows = data.filter((row: any) => {
+        if (!row || typeof row !== 'object') {
+          console.warn(`Skipping invalid row:`, row);
+          return false;
+        }
+        if (!row[idColumn]) {
+          console.warn(`Skipping row without ${idColumn}:`, row);
+          return false;
+        }
+        return true;
+      });
+
+      console.log(`📊 Found ${validRows.length} rows to process`);
+      
+      // Debug: show sample of first row
+      if (validRows.length > 0) {
+        const sampleRow = validRows[0];
+        console.log(`🔍 Sample row structure:`, {
+          [idColumn]: (sampleRow as any)[idColumn],
+          sourceColumns: sourceColumns.map(col => ({ [col]: (sampleRow as any)[col] }))
+        });
+      }
+
+      return validRows;
     } catch (error) {
       console.error(`Failed to get rows without embeddings:`, error);
       return [];
@@ -303,67 +377,35 @@ export class DatabaseConnection {
     }
   }
 
-  async getRowColumnValue(tableName: string, rowId: any, columnName: string): Promise<any> {
+  async getTableStructure(tableName: string): Promise<any> {
     try {
-      const { data, error } = await this.supabase
-        .from(tableName)
-        .select(columnName)
-        .eq('id', rowId)
-        .single();
-
-      if (error) throw error;
-      return data?.[columnName as keyof typeof data] || null;
-    } catch (error) {
-      console.error(`Failed to get column value for row ${rowId}:`, error);
-      return null;
-    }
-  }
-
-  async getTableDataSample(tableName: string, sampleSize: number, ratio: number): Promise<any[]> {
-    try {
-      // For large datasets, use efficient sampling
-      // First get total count
-      const { count: totalCount, error: countError } = await this.supabase
-        .from(tableName)
-        .select('*', { count: 'exact', head: true });
-
-      if (countError) throw countError;
-
-      if (!totalCount || totalCount <= sampleSize) {
-        // If dataset is small, return all data
-        return await this.getTableData(tableName);
-      }
-
-      // Calculate offset based on ratio
-      const offset = Math.floor(totalCount * ratio);
+      console.log(`🔍 Getting table structure for ${tableName}...`);
       
-      // Use random sampling with offset for large datasets
-      // This is more efficient than loading all data into memory
-      const { data, error } = await this.supabase
+      // Try to get a sample row to see the structure
+      const { data: sampleData, error: sampleError } = await this.supabase
         .from(tableName)
         .select('*')
-        .range(offset, offset + sampleSize - 1);
+        .limit(1);
 
-      if (error) throw error;
-
-      // If we got fewer rows than requested, try to get more
-      if (data && data.length < sampleSize) {
-        const remaining = sampleSize - data.length;
-        const { data: additionalData, error: additionalError } = await this.supabase
-          .from(tableName)
-          .select('*')
-          .range(0, remaining - 1);
-
-        if (!additionalError && additionalData) {
-          data.push(...additionalData);
-        }
+      if (sampleError) {
+        console.error(`Error getting sample data:`, sampleError);
+        return null;
       }
 
-      return data || [];
+      if (sampleData && sampleData.length > 0) {
+        const sampleRow = sampleData[0];
+        console.log(`📋 Table structure from sample row:`, {
+          columns: Object.keys(sampleRow),
+          idColumn: sampleRow.id ? 'id' : 'no id column found',
+          sampleData: sampleRow
+        });
+        return sampleRow;
+      }
+
+      return null;
     } catch (error) {
-      console.error(`Failed to get table data sample:`, error);
-      // Fallback to regular method
-      return await this.getTableData(tableName, ['*'], sampleSize);
+      console.error(`Failed to get table structure:`, error);
+      return null;
     }
   }
 }
