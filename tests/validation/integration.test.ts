@@ -23,7 +23,6 @@ describe('Integration Validation Tests', () => {
     metricType: 'similarity',
     trainingRatio: 0.8,
     testName: 'Integration Test',
-    maxCombinations: 10
   };
 
   beforeEach(() => {
@@ -164,7 +163,7 @@ describe('Integration Validation Tests', () => {
           combination: { columns: ['title'], name: 'title' },
           embedding: [0.1, 0.2, 0.3],
           context: 'title: Banking Regulations',
-          targetValue: 'Banking rules explanation',
+          yValue: 'Banking rules explanation',
           metadata: {}
         }
       ],
@@ -280,14 +279,14 @@ describe('Integration Validation Tests', () => {
       // First combination succeeds, second fails
       mockEmbeddingGenerator.processTrainingData
         .mockResolvedValueOnce({
-          embeddings: [{ id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', targetValue: 'test', metadata: {} }],
+          embeddings: [{ id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', yValue: 'test', metadata: {} }],
           combination: { columns: ['title'], name: 'title' },
           totalRows: 1
         })
         .mockRejectedValueOnce(new Error('Second combination failed'));
 
       mockEmbeddingGenerator.processQuery.mockResolvedValue([
-        { result: { id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', targetValue: 'test', metadata: {} }, similarity: 0.9 }
+        { result: { id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', yValue: 'test', metadata: {} }, similarity: 0.9 }
       ]);
 
       const results = await ragTester.runExperiment(mockConfig);
@@ -337,13 +336,13 @@ describe('Integration Validation Tests', () => {
       ]);
 
       mockEmbeddingGenerator.processTrainingData.mockResolvedValueOnce({
-        embeddings: [{ id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', targetValue: 'test', metadata: {} }],
+        embeddings: [{ id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', yValue: 'test', metadata: {} }],
         combination: { columns: ['title'], name: 'title' },
         totalRows: 1
       });
 
       mockEmbeddingGenerator.processQuery.mockResolvedValueOnce([
-        { result: { id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', targetValue: 'test', metadata: {} }, similarity: 0.9 }
+        { result: { id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', yValue: 'test', metadata: {} }, similarity: 0.9 }
       ]);
 
       const results = await ragTester.runExperiment(mockConfig);
@@ -377,7 +376,7 @@ describe('Integration Validation Tests', () => {
           combination: { columns: ['title'], name: 'title' },
           embedding: Array.from({ length: 384 }, () => Math.random()), // Large embedding
           context: `Document ${i + 1}`,
-          targetValue: `Answer ${i + 1}`,
+          yValue: `Answer ${i + 1}`,
           metadata: {}
         })),
         combination: { columns: ['title'], name: 'title' },
@@ -385,7 +384,7 @@ describe('Integration Validation Tests', () => {
       });
 
       mockEmbeddingGenerator.processQuery.mockResolvedValue([
-        { result: { id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', targetValue: 'test', metadata: {} }, similarity: 0.9 }
+        { result: { id: '1', combination: { columns: ['title'], name: 'title' }, embedding: [0.1], context: 'test', yValue: 'test', metadata: {} }, similarity: 0.9 }
       ]);
 
       // Should complete without memory errors

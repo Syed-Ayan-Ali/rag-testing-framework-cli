@@ -3,7 +3,7 @@ export interface EmbeddingModel {
   name: string;
   dimensions: number;
   description: string;
-  provider: 'local' | 'openai' | 'gemini';
+  provider: 'local' | 'openai';
   modelPath?: string; // For local models
   apiModel?: string;  // For API models
 }
@@ -61,22 +61,14 @@ export const AVAILABLE_EMBEDDING_MODELS: EmbeddingModel[] = [
     apiModel: 'text-embedding-3-large'
   },
   
-  // Gemini Models
-  {
-    id: 'embedding-001',
-    name: 'Gemini Embedding 001',
-    dimensions: 768,
-    description: 'Google Gemini embeddings, API key required',
-    provider: 'gemini',
-    apiModel: 'embedding-001'
-  }
+
 ];
 
 export function getModelById(id: string): EmbeddingModel | undefined {
   return AVAILABLE_EMBEDDING_MODELS.find(model => model.id === id);
 }
 
-export function getModelsByProvider(provider: 'local' | 'openai' | 'gemini'): EmbeddingModel[] {
+export function getModelsByProvider(provider: 'local' | 'openai'): EmbeddingModel[] {
   return AVAILABLE_EMBEDDING_MODELS.filter(model => model.provider === provider);
 }
 

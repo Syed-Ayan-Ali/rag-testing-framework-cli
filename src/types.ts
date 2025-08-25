@@ -4,12 +4,9 @@ export interface DatabaseConfig {
 }
 
 export interface EmbeddingConfig {
-  model: 'local' | 'openai' | 'gemini';
+  model: 'openai' | 'local';
   localModel?: string;
-  openaiApiKey?: string;
   openaiModel?: string;
-  geminiApiKey?: string;
-  geminiModel?: string;
 }
 
 export interface LLMConfig {
@@ -17,6 +14,9 @@ export interface LLMConfig {
   apiKey: string;
   model: string;
   endpoint?: string; // For custom OpenAI-compatible APIs
+  customModel?: string; // For custom model like Qwen/Qwen3-235B-A22B
+  customApiKey?: string; // For custom API key
+  customEndpoint?: string; // For custom endpoint
 }
 
 export interface EmbeddingTask {
@@ -50,7 +50,7 @@ export interface TestConfiguration {
   metricType: string; // Now supports any registered metric
   trainingRatio: number;
   testName: string;
-  maxCombinations?: number;
+  seed?: number; // Optional seed for reproducible data splitting
 }
 
 export interface EnhancedTestConfiguration extends TestConfiguration {
@@ -60,6 +60,7 @@ export interface EnhancedTestConfiguration extends TestConfiguration {
   enableCaching: boolean;
   crossValidationFolds?: number;
   dataSamplingStrategy: 'random' | 'stratified' | 'sequential';
+  // seed is inherited from TestConfiguration
 }
 
 export interface TestResult {

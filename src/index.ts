@@ -1,9 +1,9 @@
 // Main exports for the RAG CLI Tester package
-export { RAGTester } from './tester';
+export { RAGTester, ProductionTestConfiguration } from './tests/tester';
 export { DatabaseConnection } from './database';
 export { EmbeddingGenerator } from './embeddings';
 export { ConfigManager } from './config';
-export { SimilarityMetric, BRDRMetric } from './metrics';
+export { BRDRMetric } from './metrics';
 
 export type {
   CLIConfig,
@@ -22,6 +22,5 @@ export type {
 } from './embeddings';
 
 export type {
-  SimilarityMetricResult,
   BRDRMetricResult
 } from './metrics';

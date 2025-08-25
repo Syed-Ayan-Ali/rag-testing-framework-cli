@@ -1,0 +1,10 @@
+{
+  "embeddings": [],
+  "combination": {
+    "name": "generated",
+    "columns": [
+      "*"
+    ]
+  },
+  "totalRows": 0
+}

@@ -1,12 +1,20 @@
-import { EmbeddingConfig, ColumnCombination } from './types';
+export interface EmbeddingConfig {
+  model: 'openai' | 'local';
+  openaiModel?: string;
+  localModel?: string;
+}
 
+export interface ColumnCombination {
+  columns: string[];
+  name: string;
+}
 
 export interface EmbeddingResult {
   id: string;
   combination: ColumnCombination;
   embedding: number[];
   context: string;
-  targetValue: any;
+  yValue: any;
   metadata: Record<string, any>;
 }
 
@@ -16,57 +24,44 @@ export interface TrainingData {
   totalRows: number;
 }
 
-export interface PipelineProvider {
-  createPipeline(task: string, model: string): Promise<any>;
-}
-
-export class TransformersPipelineProvider implements PipelineProvider {
-  async createPipeline(task: string, model: string): Promise<any> {
-    // Use eval to bypass TypeScript's import compilation
-    const transformers = await eval('import("@xenova/transformers")');
-    return await transformers.pipeline(task, model);
-  }
-}
-
 export class EmbeddingGenerator {
   private config: EmbeddingConfig;
-  private embeddingPipeline: any = null;
-  private pipelineProvider: PipelineProvider;
+  private localEmbeddingPipeline: any = null;
 
-  constructor(config: EmbeddingConfig, pipelineProvider?: PipelineProvider) {
+  constructor(config: EmbeddingConfig) {
     this.config = config;
-    this.pipelineProvider = pipelineProvider || new TransformersPipelineProvider();
   }
 
   async initialize(): Promise<void> {
     try {
-      this.embeddingPipeline = await this.pipelineProvider.createPipeline(
+      // Use Function constructor to create a dynamic import that works in CommonJS
+      const dynamicImport = new Function('specifier', 'return import(specifier)');
+      const transformers = await dynamicImport('@xenova/transformers');
+      const pipeline = transformers.pipeline;
+      
+      this.localEmbeddingPipeline = await pipeline(
         'feature-extraction',
-        this.config.localModel || 'Xenova/all-MiniLM-L6-v2-small'
+        this.config.localModel || 'Xenova/all-MiniLM-L6-v2'
       );
     } catch (error) {
-      console.error('Failed to initialize embedding model:', error);
+      console.error('Failed to initialize local embedding model:', error);
       throw error;
     }
   }
 
-  generateColumnCombinations(columns: string[], maxCombinations: number = 20): ColumnCombination[] {
+  generateColumnCombinations(columns: string[]): ColumnCombination[] {
     const combinations: ColumnCombination[] = [];
-    const n = Math.min(columns.length, 5); // Limit to 5 columns max
+    const n = Math.min(columns.length, 5); // Limit to 5 columns as requested
 
     // Generate all possible combinations from 1 to n columns
     for (let i = 1; i <= n; i++) {
       const combos = this.getCombinations(columns.slice(0, n), i);
       combos.forEach(combo => {
-        if (combinations.length < maxCombinations) {
-          combinations.push({
-            columns: combo,
-            name: combo.join(' + ')
-          });
-        }
+        combinations.push({
+          columns: combo,
+          name: combo.join(' + ')
+        });
       });
-      
-      if (combinations.length >= maxCombinations) break;
     }
 
     return combinations;
@@ -91,13 +86,37 @@ export class EmbeddingGenerator {
 
   async generateEmbedding(text: string): Promise<number[]> {
     try {
-      if (!this.embeddingPipeline) {
+      if (!this.localEmbeddingPipeline) {
         throw new Error('Embedding pipeline not initialized');
       }
       
-      const result = await this.embeddingPipeline(text);
-      // Convert to flat array if needed
-      return Array.isArray(result.data) ? result.data : Array.from(result.data);
+      const result = await this.localEmbeddingPipeline(text);
+      
+      // Ensure we get a consistent array format
+      let embedding: number[];
+      if (Array.isArray(result.data)) {
+        embedding = result.data;
+      } else if (result.data && typeof result.data === 'object' && 'data' in result.data) {
+        // Handle nested data structure
+        embedding = Array.from(result.data.data);
+      } else {
+        embedding = Array.from(result.data);
+      }
+      
+      // Ensure all embeddings have the same length by padding or truncating
+      const expectedLength = 384; // Xenova/all-MiniLM-L6-v2 produces 384-dimensional embeddings
+      if (embedding.length !== expectedLength) {
+        if (embedding.length > expectedLength) {
+          embedding = embedding.slice(0, expectedLength);
+        } else {
+          // Pad with zeros if too short
+          while (embedding.length < expectedLength) {
+            embedding.push(0);
+          }
+        }
+      }
+      
+      return embedding;
     } catch (error) {
       console.error('Failed to generate embedding:', error);
       throw error;
@@ -118,7 +137,7 @@ export class EmbeddingGenerator {
   async processTrainingData(
     data: Record<string, any>[],
     combination: ColumnCombination,
-    targetColumn: string,
+    yColumn: string,
     idColumn?: string
   ): Promise<TrainingData> {
     const embeddings: EmbeddingResult[] = [];
@@ -140,16 +159,16 @@ export class EmbeddingGenerator {
           combination,
           embedding,
           context,
-          targetValue: row[targetColumn],
+          yValue: row[yColumn],
           metadata: {
             originalRow: row,
             rowIndex: i
           }
         });
 
-        // Progress logging every 50 rows to reduce noise
-        if ((i + 1) % 50 === 0) {
-          console.log(`  Processed ${i + 1}/${data.length} rows`);
+        // Progress logging
+        if ((i + 1) % 10 === 0) {
+          console.log(`Processed ${i + 1}/${data.length} rows for combination: ${combination.name}`);
         }
       } catch (error) {
         console.error(`Failed to process row ${i}:`, error);

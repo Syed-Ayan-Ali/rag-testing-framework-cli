@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { config as dotenvConfig } from 'dotenv';
 import { CLIConfig, DatabaseConfig, EmbeddingConfig, LLMConfig } from './types';
-import { ProviderManager } from './providers';
+
 
 export class ConfigManager {
   private configPath: string;
@@ -59,22 +59,29 @@ export class ConfigManager {
   }
 
   getAvailableProviders(): { embedding: string[]; llm: string[] } {
-    return ProviderManager.detectAvailableProviders();
+    // Simplified provider detection - only support local and openai for embeddings
+    const providers = {
+      embedding: ['local', 'openai'],
+      llm: ['openai', 'anthropic', 'custom']
+    };
+    
+    // Check if OpenAI API key is available
+    if (process.env.OPENAI_API_KEY) {
+      providers.embedding.push('openai');
+      providers.llm.push('openai');
+    }
+    
+    return providers;
   }
 
   createEmbeddingConfig(provider: string): EmbeddingConfig {
     const config: EmbeddingConfig = {
-      model: provider as 'local' | 'openai' | 'gemini'
+      model: provider as 'local' | 'openai'
     };
 
     switch (provider) {
       case 'openai':
-        config.openaiApiKey = process.env.OPENAI_API_KEY;
         config.openaiModel = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
-        break;
-      case 'gemini':
-        config.geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
-        config.geminiModel = process.env.GEMINI_EMBEDDING_MODEL || 'embedding-001';
         break;
       case 'local':
       default:
