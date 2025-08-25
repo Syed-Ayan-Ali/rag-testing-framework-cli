@@ -4,12 +4,9 @@ export interface DatabaseConfig {
 }
 
 export interface EmbeddingConfig {
-  model: 'local' | 'openai' | 'gemini';
+  model: 'openai' | 'local';
   localModel?: string;
-  openaiApiKey?: string;
   openaiModel?: string;
-  geminiApiKey?: string;
-  geminiModel?: string;
 }
 
 export interface LLMConfig {
@@ -17,6 +14,9 @@ export interface LLMConfig {
   apiKey: string;
   model: string;
   endpoint?: string; // For custom OpenAI-compatible APIs
+  customModel?: string; // For custom model like Qwen/Qwen3-235B-A22B
+  customApiKey?: string; // For custom API key
+  customEndpoint?: string; // For custom endpoint
 }
 
 export interface EmbeddingTask {
@@ -50,9 +50,22 @@ export interface TestConfiguration {
   metricType: 'similarity' | 'brdr';
   trainingRatio: number;
   testName: string;
-  maxCombinations?: number;
+  seed?: number; // Optional seed for reproducible data splitting
 }
 
+<<<<<<< HEAD
+export interface EnhancedTestConfiguration extends TestConfiguration {
+  batchSize: number;
+  maxTrainingSamples: number;
+  maxTestingSamples: number;
+  enableCaching: boolean;
+  crossValidationFolds?: number;
+  dataSamplingStrategy: 'random' | 'stratified' | 'sequential';
+  // seed is inherited from TestConfiguration
+}
+
+=======
+>>>>>>> main
 export interface TestResult {
   combination: ColumnCombination;
   averageScore: number;

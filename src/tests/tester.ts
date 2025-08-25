@@ -1,55 +1,55 @@
-import { DatabaseConnection } from './database';
-import { EmbeddingGenerator, TrainingData } from './embeddings';
-import { MetricFactory, BaseMetric, BaseMetricResult } from './metrics/base-metric';
-import { TestConfiguration, TestResult, ExperimentResults, ColumnCombination } from './types';
+import { DatabaseConnection } from '../database';
+import { EmbeddingGenerator, TrainingData, ColumnCombination } from '../embeddings';
+import { TestConfiguration, TestResult, ExperimentResults } from '../types';
+import { BRDRMetric, BRDRMetricResult, SQLMetric, SQLMetricResult } from '../metrics';
 
 export interface ProductionTestConfiguration extends TestConfiguration {
-  // Data splitting configuration
+  // Data splitting configuration with fixed amounts
   trainingRatio: number;
   validationRatio: number;
   testingRatio: number;
-  
-  // Sampling strategy for large datasets
-  maxTrainingSamples: number;
-  maxValidationSamples: number;
-  maxTestingSamples: number;
-  
+
+  // Fixed sample sizes for consistency (linked to seed)
+  trainingSampleSize: number;  // Fixed number of training rows
+  validationSampleSize: number; // Fixed number of validation rows
+  testingSampleSize: number;   // Fixed number of testing rows
+
   // Performance settings
   batchSize: number;
   enableCaching: boolean;
-  
+
   // Cross-validation settings
   crossValidationFolds: number;
-  
+
   // Data quality filters
   minQueryLength: number;
   minAnswerLength: number;
   maxQueryLength: number;
   maxAnswerLength: number;
-  
+
   // Sampling strategy
   samplingStrategy: 'random' | 'stratified' | 'time_based' | 'query_complexity';
-  
+
   // For time-based sampling (if you have timestamp columns)
   timestampColumn?: string;
   timeWindow?: 'daily' | 'weekly' | 'monthly';
-  
+
   // For query complexity sampling
   complexityMetrics?: string[];
 }
 
 export interface ProductionTestResult extends TestResult {
-  // Detailed metrics
-  detailedMetrics: BaseMetricResult;
-  
+  // Detailed metrics (supports both BRDR and SQL)
+  detailedMetrics: BRDRMetricResult | SQLMetricResult;
+
   // Cross-validation results
   crossValidationScores: number[];
   crossValidationMean: number;
   crossValidationStd: number;
-  
+
   // Confidence intervals
   confidenceInterval: { lower: number; upper: number; confidence: number };
-  
+
   // Performance metrics
   processingStats: {
     trainingTime: number;
@@ -59,7 +59,7 @@ export interface ProductionTestResult extends TestResult {
     memoryUsage: number;
     throughput: number; // queries per second
   };
-  
+
   // Data quality metrics
   dataQuality: {
     trainingSampleSize: number;
@@ -71,10 +71,11 @@ export interface ProductionTestResult extends TestResult {
   };
 }
 
-export class ProductionRAGTester {
+export class RAGTester {
   private db: DatabaseConnection;
   private embeddings: EmbeddingGenerator;
-  private metricCache = new Map<string, BaseMetric>();
+  private brdrMetric: BRDRMetric;
+  private sqlMetric: SQLMetric;
   private embeddingCache = new Map<string, number[][]>();
 
   constructor(
@@ -83,24 +84,41 @@ export class ProductionRAGTester {
   ) {
     this.db = dbConnection;
     this.embeddings = embeddingGenerator;
+    this.brdrMetric = new BRDRMetric();
+    this.sqlMetric = new SQLMetric();
   }
 
   async initialize(): Promise<void> {
     await this.embeddings.initialize();
   }
 
-  async runProductionExperiment(config: ProductionTestConfiguration): Promise<ExperimentResults> {
+  /**
+   * Creates a seeded random number generator for reproducible results
+   * @param seed - The seed value for reproducibility
+   * @returns A function that generates random numbers
+   */
+  private createSeededRandom(seed: number): () => number {
+    let currentSeed = seed;
+    return () => {
+      // Simple linear congruential generator for reproducibility
+      currentSeed = (currentSeed * 9301 + 49297) % 233280;
+      return currentSeed / 233280;
+    };
+  }
+
+  async runExperiment(config: ProductionTestConfiguration): Promise<ExperimentResults> {
     const startTime = Date.now();
     const memoryStart = process.memoryUsage();
 
-    console.log(`\n🚀 Starting Production RAG Experiment: ${config.testName}`);
+    console.log(`\n🚀 Starting RAG Experiment: ${config.testName}`);
     console.log(`📊 Table: ${config.tableName}`);
     console.log(`📋 Columns: ${config.selectedColumns.join(', ')}`);
     console.log(`🎯 Metric: ${config.metricType}`);
-    console.log(`📊 Training/Validation/Testing: ${config.trainingRatio}/${config.validationRatio}/${config.testingRatio}`);
+    console.log(`🔢 Seed: ${config.seed}`);
+    console.log(`📊 Fixed Sample Sizes - Training: ${config.trainingSampleSize}, Validation: ${config.validationSampleSize}, Testing: ${config.testingSampleSize}`);
 
     // Validate configuration
-    const validation = await this.validateProductionConfiguration(config);
+    const validation = await this.validateConfiguration(config);
     if (!validation.isValid) {
       throw new Error(`Configuration validation failed: ${validation.errors.join(', ')}`);
     }
@@ -113,8 +131,7 @@ export class ProductionRAGTester {
 
     // Generate column combinations
     const combinations = this.embeddings.generateColumnCombinations(
-      config.selectedColumns,
-      config.maxCombinations || 20
+      config.selectedColumns
     );
     
     console.log(`🔄 Testing ${combinations.length} column combinations...\n`);
@@ -127,7 +144,7 @@ export class ProductionRAGTester {
       console.log(`[${i + 1}/${combinations.length}] Testing: ${combination.name}`);
 
       try {
-        const result = await this.runProductionSingleTest(config, combination, tableInfo);
+        const result = await this.runSingleTest(config, combination, tableInfo);
         allResults.push(result);
         
         console.log(`  ✅ Score: ${result.averageScore.toFixed(3)} (${result.totalTests} tests)`);
@@ -144,7 +161,7 @@ export class ProductionRAGTester {
     }
 
     // Calculate enhanced summary statistics
-    const summary = this.calculateProductionSummary(allResults);
+    const summary = this.calculateSummary(allResults);
     const processingTime = Date.now() - startTime;
     const memoryEnd = process.memoryUsage();
     const memoryUsed = memoryEnd.heapUsed - memoryStart.heapUsed;
@@ -161,19 +178,16 @@ export class ProductionRAGTester {
     };
   }
 
-  private async runProductionSingleTest(
-    config: ProductionTestConfiguration, 
+  private async runSingleTest(
+    config: ProductionTestConfiguration,
     combination: ColumnCombination,
     tableInfo: any
   ): Promise<ProductionTestResult> {
     const startTime = Date.now();
-    
-    // Get metric instance
-    const metric = this.getMetric(config.metricType);
-    
-    // Split data into training, validation, and testing sets
-    const { trainingData, validationData, testingData } = await this.splitData(config, tableInfo);
-    
+
+    // Split data into training, validation, and testing sets with fixed sizes
+    const { trainingData, validationData, testingData } = await this.splitDataWithFixedSizes(config, tableInfo);
+
     if (trainingData.length === 0 || testingData.length === 0) {
       throw new Error('Insufficient data for training or testing');
     }
@@ -186,10 +200,9 @@ export class ProductionRAGTester {
     // Run cross-validation on training data
     const cvStart = Date.now();
     const crossValidationScores = await this.runCrossValidation(
-      trainingData, 
-      combination, 
-      metric, 
-      config, 
+      trainingData,
+      combination,
+      config,
       trainingEmbeddings
     );
     const cvTime = Date.now() - cvStart;
@@ -197,9 +210,8 @@ export class ProductionRAGTester {
     // Test on validation set (if available)
     const validationStart = Date.now();
     const validationResults = await this.processTestQueries(
-      validationData, 
-      trainingEmbeddings, 
-      metric, 
+      validationData,
+      trainingEmbeddings,
       config
     );
     const validationTime = Date.now() - validationStart;
@@ -207,9 +219,8 @@ export class ProductionRAGTester {
     // Test on final test set
     const testingStart = Date.now();
     const testingResults = await this.processTestQueries(
-      testingData, 
-      trainingEmbeddings, 
-      metric, 
+      testingData,
+      trainingEmbeddings,
       config
     );
     const testingTime = Date.now() - testingStart;
@@ -262,223 +273,89 @@ export class ProductionRAGTester {
     };
   }
 
-  private async splitData(config: ProductionTestConfiguration, tableInfo: any): Promise<{
+  private async splitDataWithFixedSizes(config: ProductionTestConfiguration, tableInfo: any): Promise<{
     trainingData: any[];
     validationData: any[];
     testingData: any[];
   }> {
     const totalRows = tableInfo.rowCount;
-    
-    // Calculate sample sizes
-    const trainingSize = Math.min(config.maxTrainingSamples, Math.floor(totalRows * config.trainingRatio));
-    const validationSize = Math.min(config.maxValidationSamples, Math.floor(totalRows * config.validationRatio));
-    const testingSize = Math.min(config.maxTestingSamples, Math.floor(totalRows * config.testingRatio));
 
-    console.log(`  📊 Sample sizes - Training: ${trainingSize}, Validation: ${validationSize}, Testing: ${testingSize}`);
+    console.log(`  📊 Using fixed sample sizes with seed ${config.seed}:`);
+    console.log(`     Training: ${config.trainingSampleSize}, Validation: ${config.validationSampleSize}, Testing: ${config.testingSampleSize}`);
 
-    // Use different sampling strategies for each split
-    const trainingData = await this.sampleData(config.tableName, trainingSize, 0, config.samplingStrategy, config);
-    const validationData = await this.sampleData(config.tableName, validationSize, config.trainingRatio, config.samplingStrategy, config);
-    const testingData = await this.sampleData(config.tableName, testingSize, config.trainingRatio + config.validationRatio, config.samplingStrategy, config);
+    // Create seeded random generator for reproducible sampling
+    const seededRandom = this.createSeededRandom(config.seed || 42);
+
+    // Sample data using seed for reproducibility
+    const allData = await this.db.getTableData(config.tableName);
+
+    if (allData.length < config.trainingSampleSize + config.validationSampleSize + config.testingSampleSize) {
+      throw new Error(`Not enough data in table. Need ${config.trainingSampleSize + config.validationSampleSize + config.testingSampleSize} rows, but only ${allData.length} available.`);
+    }
+
+    // Shuffle data using seeded random for reproducibility
+    const shuffled = [...allData].sort(() => seededRandom() - 0.5);
+
+    // Take exact sample sizes for each split
+    const trainingData = shuffled.slice(0, config.trainingSampleSize);
+    const validationData = shuffled.slice(config.trainingSampleSize, config.trainingSampleSize + config.validationSampleSize);
+    const testingData = shuffled.slice(config.trainingSampleSize + config.validationSampleSize, config.trainingSampleSize + config.validationSampleSize + config.testingSampleSize);
 
     return { trainingData, validationData, testingData };
-  }
-
-  private async sampleData(
-    tableName: string, 
-    sampleSize: number, 
-    offsetRatio: number, 
-    strategy: string, 
-    config: ProductionTestConfiguration
-  ): Promise<any[]> {
-    if (strategy === 'time_based' && config.timestampColumn) {
-      return await this.timeBasedSampling(tableName, sampleSize, offsetRatio, config);
-    } else if (strategy === 'query_complexity' && config.complexityMetrics) {
-      return await this.complexityBasedSampling(tableName, sampleSize, offsetRatio, config);
-    } else if (strategy === 'stratified') {
-      return await this.stratifiedSampling(tableName, sampleSize, offsetRatio, config);
-    } else {
-      // Default to random sampling
-      return await this.db.getTableDataSample(tableName, sampleSize, offsetRatio);
-    }
-  }
-
-  private async timeBasedSampling(
-    tableName: string, 
-    sampleSize: number, 
-    offsetRatio: number, 
-    config: ProductionTestConfiguration
-  ): Promise<any[]> {
-    // For time-based sampling, we need to order by timestamp and sample from different time periods
-    // This ensures we get representative data across different time periods
-    try {
-      // Use the public method instead of accessing private supabase
-      return await this.db.getTableDataSample(tableName, sampleSize, offsetRatio);
-    } catch (error) {
-      console.warn(`Time-based sampling failed, falling back to random: ${error}`);
-      return await this.db.getTableDataSample(tableName, sampleSize, offsetRatio);
-    }
-  }
-
-  private async complexityBasedSampling(
-    tableName: string, 
-    sampleSize: number, 
-    offsetRatio: number, 
-    config: ProductionTestConfiguration
-  ): Promise<any[]> {
-    // For complexity-based sampling, we need to analyze query complexity and sample proportionally
-    // This is a simplified implementation - in production you might use more sophisticated complexity metrics
-    try {
-      // Get a larger sample to analyze complexity
-      const analysisSample = await this.db.getTableDataSample(tableName, sampleSize * 3, offsetRatio);
-      
-      // Calculate complexity scores (simplified)
-      const complexityScores = analysisSample.map(row => ({
-        row,
-        score: this.calculateQueryComplexity(row, config.queryColumn || 'query')
-      }));
-      
-      // Sort by complexity and sample proportionally
-      complexityScores.sort((a, b) => a.score - b.score);
-      
-      // Sample from different complexity ranges
-      const lowComplexity = Math.floor(sampleSize * 0.3);
-      const mediumComplexity = Math.floor(sampleSize * 0.4);
-      const highComplexity = sampleSize - lowComplexity - mediumComplexity;
-      
-      const lowRange = complexityScores.slice(0, Math.floor(complexityScores.length * 0.3));
-      const mediumRange = complexityScores.slice(
-        Math.floor(complexityScores.length * 0.3), 
-        Math.floor(complexityScores.length * 0.7)
-      );
-      const highRange = complexityScores.slice(Math.floor(complexityScores.length * 0.7));
-      
-      const samples = [
-        ...this.randomSample(lowRange, lowComplexity),
-        ...this.randomSample(mediumRange, mediumComplexity),
-        ...this.randomSample(highRange, highComplexity)
-      ];
-      
-      return samples.map(s => s.row);
-    } catch (error) {
-      console.warn(`Complexity-based sampling failed, falling back to random: ${error}`);
-      return await this.db.getTableDataSample(tableName, sampleSize, offsetRatio);
-    }
-  }
-
-  private async stratifiedSampling(
-    tableName: string, 
-    sampleSize: number, 
-    offsetRatio: number, 
-    config: ProductionTestConfiguration
-  ): Promise<any[]> {
-    // Stratified sampling based on query length or other categorical features
-    try {
-      const analysisSample = await this.db.getTableDataSample(tableName, sampleSize * 2, offsetRatio);
-      
-      // Stratify by query length categories
-      const shortQueries = analysisSample.filter(row => 
-        (row[config.queryColumn || 'query'] || '').length < 50
-      );
-      const mediumQueries = analysisSample.filter(row => {
-        const length = (row[config.queryColumn || 'query'] || '').length;
-        return length >= 50 && length < 150;
-      });
-      const longQueries = analysisSample.filter(row => 
-        (row[config.queryColumn || 'query'] || '').length >= 150
-      );
-      
-      // Sample proportionally from each stratum
-      const shortSample = Math.floor(sampleSize * 0.4);
-      const mediumSample = Math.floor(sampleSize * 0.4);
-      const longSample = sampleSize - shortSample - mediumSample;
-      
-      const samples = [
-        ...this.randomSample(shortQueries, shortSample),
-        ...this.randomSample(mediumQueries, mediumSample),
-        ...this.randomSample(longQueries, longSample)
-      ];
-      
-      return samples;
-    } catch (error) {
-      console.warn(`Stratified sampling failed, falling back to random: ${error}`);
-      return await this.db.getTableDataSample(tableName, sampleSize, offsetRatio);
-    }
-  }
-
-  private calculateQueryComplexity(row: any, queryColumn: string): number {
-    const query = row[queryColumn] || '';
-    let complexity = 0;
-    
-    // Simple complexity heuristics
-    if (query.includes('join')) complexity += 2;
-    if (query.includes('where')) complexity += 1;
-    if (query.includes('group by')) complexity += 2;
-    if (query.includes('having')) complexity += 2;
-    if (query.includes('order by')) complexity += 1;
-    if (query.includes('subquery') || query.includes('(')) complexity += 3;
-    if (query.includes('union')) complexity += 2;
-    
-    // Length factor
-    complexity += Math.min(query.length / 100, 2);
-    
-    return complexity;
   }
 
   private async runCrossValidation(
     trainingData: any[],
     combination: ColumnCombination,
-    metric: BaseMetric,
     config: ProductionTestConfiguration,
     trainingEmbeddings: TrainingData
   ): Promise<number[]> {
     const scores: number[] = [];
     const foldSize = Math.floor(trainingData.length / config.crossValidationFolds);
-    
+
     for (let fold = 0; fold < config.crossValidationFolds; fold++) {
       const startIdx = fold * foldSize;
       const endIdx = startIdx + foldSize;
-      
+
       // Create validation fold
       const validationFold = trainingData.slice(startIdx, endIdx);
       const trainingFold = [
         ...trainingData.slice(0, startIdx),
         ...trainingData.slice(endIdx)
       ];
-      
+
       if (trainingFold.length === 0 || validationFold.length === 0) continue;
-      
+
       // Generate embeddings for training fold
       const foldEmbeddings = await this.embeddings.processTrainingData(
         trainingFold,
         combination,
         config.answerColumn
       );
-      
+
       // Test on validation fold
       const foldResults = await this.processTestQueries(
         validationFold,
         foldEmbeddings,
-        metric,
         config
       );
-      
+
       if (foldResults.length > 0) {
         const foldScore = foldResults.reduce((sum, r) => sum + r.score, 0) / foldResults.length;
         scores.push(foldScore);
       }
     }
-    
+
     return scores;
   }
 
   private async generateTrainingEmbeddings(
-    trainingData: any[], 
-    combination: ColumnCombination, 
+    trainingData: any[],
+    combination: ColumnCombination,
     config: ProductionTestConfiguration
   ): Promise<TrainingData> {
-    const cacheKey = `${combination.name}_${trainingData.length}`;
-    
+    const cacheKey = `${combination.name}_${trainingData.length}_${config.seed}`;
+
     if (config.enableCaching && this.embeddingCache.has(cacheKey)) {
       console.log(`  💾 Using cached embeddings for ${combination.name}`);
       const cachedEmbeddings = this.embeddingCache.get(cacheKey)!;
@@ -488,7 +365,7 @@ export class ProductionRAGTester {
           combination,
           embedding,
           context: trainingData[index] ? this.combineColumns(trainingData[index], combination.columns) : '',
-          targetValue: trainingData[index]?.[config.answerColumn] || '',
+          yValue: trainingData[index]?.[config.answerColumn] || '',
           metadata: { cached: true }
         })),
         combination,
@@ -515,7 +392,6 @@ export class ProductionRAGTester {
   private async processTestQueries(
     testingData: any[],
     trainingEmbeddings: TrainingData,
-    metric: BaseMetric,
     config: ProductionTestConfiguration
   ): Promise<any[]> {
     const results: any[] = [];
@@ -523,10 +399,10 @@ export class ProductionRAGTester {
 
     for (let i = 0; i < testingData.length; i += batchSize) {
       const batch = testingData.slice(i, i + batchSize);
-      
+
       for (const testRow of batch) {
-        const query = testRow[config.queryColumn];
-        const expectedAnswer = testRow[config.answerColumn];
+      const query = testRow[config.queryColumn];
+      const expectedAnswer = testRow[config.answerColumn];
 
         if (!query || !expectedAnswer) continue;
 
@@ -534,36 +410,44 @@ export class ProductionRAGTester {
         if (query.length < config.minQueryLength || query.length > config.maxQueryLength) continue;
         if (expectedAnswer.length < config.minAnswerLength || expectedAnswer.length > config.maxAnswerLength) continue;
 
-        try {
-          // Find best match from training data
-          const matches = await this.embeddings.processQuery(
-            query,
-            trainingEmbeddings,
-            1
-          );
+      try {
+        // Find best match from training data
+        const matches = await this.embeddings.processQuery(
+          query,
+          trainingEmbeddings,
+          1
+        );
 
           if (matches.length === 0) continue;
 
-          const bestMatch = matches[0];
-          const actualAnswer = bestMatch.result.targetValue;
+        const bestMatch = matches[0];
+        const actualAnswer = bestMatch.result.yValue;
 
-          // Calculate metric
-          const detailedMetrics = metric.calculate(expectedAnswer, actualAnswer, bestMatch.similarity);
+          // Calculate metric based on configuration
+          let detailedMetrics: BRDRMetricResult | SQLMetricResult;
+          if (config.metricType === 'brdr') {
+            detailedMetrics = this.brdrMetric.calculate(expectedAnswer, actualAnswer, bestMatch.similarity);
+          } else if (config.metricType === 'sql') {
+            detailedMetrics = this.sqlMetric.calculate(expectedAnswer, actualAnswer, bestMatch.similarity);
+        } else {
+            // Default to BRDR
+            detailedMetrics = this.brdrMetric.calculate(expectedAnswer, actualAnswer, bestMatch.similarity);
+        }
 
-          results.push({
-            query,
-            expectedAnswer,
-            actualAnswer,
-            similarity: bestMatch.similarity,
+        results.push({
+          query,
+          expectedAnswer,
+          actualAnswer,
+          similarity: bestMatch.similarity,
             score: detailedMetrics.overallScore,
             detailedMetrics
-          });
+        });
 
-        } catch (error) {
-          console.warn(`    Skipped test query ${i + 1}: ${error instanceof Error ? error.message : String(error)}`);
-          continue;
-        }
+      } catch (error) {
+        console.warn(`    Skipped test query ${i + 1}: ${error instanceof Error ? error.message : String(error)}`);
+        continue;
       }
+    }
 
       // Progress indicator for large datasets
       if (testingData.length > 1000 && i % (batchSize * 10) === 0) {
@@ -572,20 +456,6 @@ export class ProductionRAGTester {
     }
 
     return results;
-  }
-
-  private getMetric(metricType: string): BaseMetric {
-    if (!this.metricCache.has(metricType)) {
-      const metric = MetricFactory.getMetric(metricType);
-      this.metricCache.set(metricType, metric);
-    }
-    return this.metricCache.get(metricType)!;
-  }
-
-  private randomSample(data: any[], sampleSize: number): any[] {
-    if (data.length <= sampleSize) return data;
-    const shuffled = [...data].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, sampleSize);
   }
 
   private combineColumns(row: any, columns: string[]): string {
@@ -601,10 +471,10 @@ export class ProductionRAGTester {
     const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
     const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / (scores.length - 1);
     const standardError = Math.sqrt(variance / scores.length);
-    
+
     // Simple t-distribution approximation for 95% confidence
     const tValue = 1.96; // Approximate for large samples
-    
+
     return {
       lower: Math.max(0, mean - tValue * standardError),
       upper: Math.min(1, mean + tValue * standardError),
@@ -613,13 +483,13 @@ export class ProductionRAGTester {
   }
 
   private calculateDataQuality(
-    trainingData: any[], 
-    validationData: any[], 
-    testingData: any[], 
+    trainingData: any[],
+    validationData: any[],
+    testingData: any[],
     config: ProductionTestConfiguration
   ): any {
     const allData = [...trainingData, ...validationData, ...testingData];
-    
+
     // Calculate query complexity distribution
     const complexityDistribution: Record<string, number> = {};
     allData.forEach(row => {
@@ -627,7 +497,7 @@ export class ProductionRAGTester {
       const category = complexity < 3 ? 'low' : complexity < 6 ? 'medium' : 'high';
       complexityDistribution[category] = (complexityDistribution[category] || 0) + 1;
     });
-    
+
     // Normalize distribution
     Object.keys(complexityDistribution).forEach(key => {
       complexityDistribution[key] = complexityDistribution[key] / allData.length;
@@ -643,14 +513,33 @@ export class ProductionRAGTester {
     };
   }
 
-  private calculateProductionSummary(results: ProductionTestResult[]): any {
+  private calculateQueryComplexity(row: any, queryColumn: string): number {
+    const query = row[queryColumn] || '';
+    let complexity = 0;
+
+    // Simple complexity heuristics
+    if (query.includes('join')) complexity += 2;
+    if (query.includes('where')) complexity += 1;
+    if (query.includes('group by')) complexity += 2;
+    if (query.includes('having')) complexity += 2;
+    if (query.includes('order by')) complexity += 1;
+    if (query.includes('subquery') || query.includes('(')) complexity += 3;
+    if (query.includes('union')) complexity += 2;
+
+    // Length factor
+    complexity += Math.min(query.length / 100, 2);
+
+    return complexity;
+  }
+
+  private calculateSummary(results: ProductionTestResult[]): any {
     const scores = results.map(r => r.averageScore);
     const cvMeans = results.map(r => r.crossValidationMean);
-    
-    const bestResult = results.reduce((best, current) => 
+
+    const bestResult = results.reduce((best, current) =>
       current.averageScore > best.averageScore ? current : best
     );
-    const worstResult = results.reduce((worst, current) => 
+    const worstResult = results.reduce((worst, current) =>
       current.averageScore < worst.averageScore ? current : worst
     );
 
@@ -683,7 +572,7 @@ export class ProductionRAGTester {
     };
   }
 
-  async validateProductionConfiguration(config: ProductionTestConfiguration): Promise<{
+  async validateConfiguration(config: ProductionTestConfiguration): Promise<{
     isValid: boolean;
     errors: string[];
     warnings: string[];
@@ -695,10 +584,10 @@ export class ProductionRAGTester {
     if (config.trainingRatio + config.validationRatio + config.testingRatio !== 1) {
       errors.push('Training, validation, and testing ratios must sum to 1');
     }
-    
+
     if (config.batchSize < 1) errors.push('Batch size must be at least 1');
-    if (config.maxTrainingSamples < 10) errors.push('Maximum training samples must be at least 10');
-    if (config.maxTestingSamples < 5) errors.push('Maximum testing samples must be at least 5');
+    if (config.trainingSampleSize < 10) errors.push('Training sample size must be at least 10');
+    if (config.testingSampleSize < 5) errors.push('Testing sample size must be at least 5');
     if (config.crossValidationFolds < 2) errors.push('Cross-validation folds must be at least 2');
 
     // Data quality validation
@@ -707,15 +596,13 @@ export class ProductionRAGTester {
     if (config.minAnswerLength < 1) errors.push('Minimum answer length must be at least 1');
     if (config.maxAnswerLength <= config.minAnswerLength) errors.push('Maximum answer length must be greater than minimum');
 
-    // Check if metric exists
-    try {
-      MetricFactory.getMetric(config.metricType);
-    } catch (error) {
-      errors.push(`Metric '${config.metricType}' not found`);
+    // Check if metric is supported (BRDR and SQL are supported)
+    if (config.metricType !== 'brdr' && config.metricType !== 'sql') {
+      errors.push(`Metric '${config.metricType}' not supported. Only 'brdr' and 'sql' are supported.`);
     }
 
     // Performance warnings for large datasets
-    if (config.maxTrainingSamples > 100000) {
+    if (config.trainingSampleSize > 100000) {
       warnings.push('Large training sample size may cause memory issues');
     }
     if (config.batchSize > 1000) {

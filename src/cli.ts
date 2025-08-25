@@ -10,8 +10,13 @@ import * as path from 'path';
 import { ConfigManager } from './config';
 import { DatabaseConnection } from './database';
 import { EmbeddingGenerator } from './embeddings';
+<<<<<<< HEAD
+import { RAGTester, ProductionTestConfiguration } from './tests/tester';
+import { TestConfiguration, ExperimentResults, EnhancedTestConfiguration } from './types';
+=======
 import { RAGTester } from './tester';
 import { TestConfiguration, ExperimentResults } from './types';
+>>>>>>> main
 
 const program = new Command();
 
@@ -23,6 +28,10 @@ program
   .description('CLI tool for testing RAG systems with different embedding combinations')
   .version(packageJson.version);
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> main
 // Configure command
 program
   .command('configure')
@@ -60,6 +69,32 @@ program
     }
   });
 
+<<<<<<< HEAD
+// List available metrics
+program
+  .command('metrics')
+  .description('List available evaluation metrics')
+  .action(async () => {
+    try {
+      console.log(chalk.bold('📊 Available Evaluation Metrics:\n'));
+      
+      console.log(chalk.cyan('• BRDR: Banking Regulation specific evaluation metric'));
+      console.log(chalk.gray('  Evaluates banking regulation compliance and accuracy'));
+          console.log('');
+      console.log(chalk.cyan('• SQL: Text-to-SQL evaluation metric'));
+      console.log(chalk.gray('  Evaluates SQL query generation and database interaction'));
+      console.log('');
+      
+      console.log(chalk.yellow('💡 Use --metric option with test commands to specify which metric to use'));
+      
+    } catch (error) {
+      console.error(chalk.red(`❌ Failed to load metrics: ${error instanceof Error ? error.message : String(error)}`));
+      process.exit(1);
+    }
+  });
+
+=======
+>>>>>>> main
 // List tables command
 program
   .command('tables')
@@ -182,18 +217,23 @@ program
   .option('-c, --columns <columns>', 'Comma-separated list of columns for embeddings')
   .option('-q, --query <column>', 'Column containing queries')
   .option('-a, --answer <column>', 'Column containing expected answers')
+<<<<<<< HEAD
+  .option('-m, --metric <type>', 'Metric type (brdr|sql)', 'brdr')
+=======
   .option('-m, --metric <type>', 'Metric type (similarity|brdr)', 'similarity')
+>>>>>>> main
   .option('-r, --ratio <number>', 'Training ratio (0-1)', '0.8')
   .option('-n, --name <name>', 'Test name')
   .option('-l, --limit <number>', 'Max combinations to test', '20')
+  .option('-s, --seed <number>', 'Random seed for reproducible data splitting')
   .action(async (options) => {
     try {
       const configManager = new ConfigManager();
       const config = await configManager.loadConfig();
 
       // Interactive mode if no options provided
-      let testConfig: TestConfiguration;
-      
+      let testConfig: ProductionTestConfiguration;
+
       if (!options.table) {
         testConfig = await interactiveTestSetup();
       } else {
@@ -203,10 +243,23 @@ program
           queryColumn: options.query || '',
           answerColumn: options.answer || '',
           embeddingConfig: config.embedding,
-          metricType: options.metric as 'similarity' | 'brdr',
-          trainingRatio: parseFloat(options.ratio),
+          metricType: options.metric || 'brdr',
+          trainingRatio: 0.8, // Fixed ratio for consistency
+          validationRatio: 0.1,
+          testingRatio: 0.1,
+          trainingSampleSize: 10000, // Fixed training sample size
+          validationSampleSize: 1000, // Fixed validation sample size
+          testingSampleSize: 2000, // Fixed testing sample size
           testName: options.name || `Test_${new Date().toISOString().replace(/[:.]/g, '-')}`,
-          maxCombinations: parseInt(options.limit)
+          batchSize: 100,
+          enableCaching: false,
+          crossValidationFolds: 5,
+          minQueryLength: 10,
+          maxQueryLength: 500,
+          minAnswerLength: 10,
+          maxAnswerLength: 1000,
+          samplingStrategy: 'random',
+          seed: options.seed ? parseInt(options.seed) : undefined
         };
       }
 
@@ -218,7 +271,7 @@ program
     }
   });
 
-async function interactiveTestSetup(): Promise<TestConfiguration> {
+async function interactiveTestSetup(): Promise<ProductionTestConfiguration> {
   console.log(chalk.bold('🧪 Interactive RAG Test Setup\n'));
 
   const configManager = new ConfigManager();
@@ -279,8 +332,8 @@ async function interactiveTestSetup(): Promise<TestConfiguration> {
     name: 'metricType',
     message: 'Select evaluation metric:',
     choices: [
-      { name: 'Similarity (general purpose)', value: 'similarity' },
-      { name: 'BRDR (banking regulation specific)', value: 'brdr' }
+      { name: 'BRDR (banking regulation specific)', value: 'brdr' },
+      { name: 'SQL (text-to-SQL)', value: 'sql' }
     ]
   });
 
@@ -302,14 +355,15 @@ async function interactiveTestSetup(): Promise<TestConfiguration> {
     default: `Test_${new Date().toISOString().replace(/[:.]/g, '-')}`
   });
 
-  const limitInput = await inquirer.prompt({
+  const seedInput = await inquirer.prompt({
     type: 'input',
-    name: 'maxCombinations',
-    message: 'Maximum combinations to test:',
-    default: '20',
+    name: 'seed',
+    message: 'Random seed for reproducible results (optional, press Enter to skip):',
+    default: '',
     validate: (input: any) => {
+      if (!input.trim()) return true; // Allow empty
       const num = parseInt(input);
-      return (num > 0 && num <= 100) || 'Must be between 1 and 100';
+      return !isNaN(num) || 'Must be a valid number';
     }
   });
 
@@ -320,7 +374,7 @@ async function interactiveTestSetup(): Promise<TestConfiguration> {
     ...metricSelection,
     ...ratioInput,
     ...nameInput,
-    ...limitInput
+    ...seedInput
   };
 
   return {
@@ -330,13 +384,35 @@ async function interactiveTestSetup(): Promise<TestConfiguration> {
     answerColumn: (answerSelection as any).answerColumn,
     embeddingConfig: config.embedding,
     metricType: (metricSelection as any).metricType,
-    trainingRatio: parseFloat((ratioInput as any).trainingRatio),
+    trainingRatio: 0.8, // Fixed ratio for consistency
+    validationRatio: 0.1,
+    testingRatio: 0.1,
+    trainingSampleSize: 10000, // Fixed training sample size
+    validationSampleSize: 1000, // Fixed validation sample size
+    testingSampleSize: 2000, // Fixed testing sample size
     testName: (nameInput as any).testName,
+<<<<<<< HEAD
+    batchSize: 100,
+    enableCaching: false,
+    crossValidationFolds: 5,
+    minQueryLength: 10,
+    maxQueryLength: 500,
+    minAnswerLength: 10,
+    maxAnswerLength: 1000,
+    samplingStrategy: 'random',
+    seed: (seedInput as any).seed ? parseInt((seedInput as any).seed) : undefined
+  };
+}
+
+
+async function runExperiment(testConfig: ProductionTestConfiguration, config: any) {
+=======
     maxCombinations: parseInt((limitInput as any).maxCombinations)
   };
 }
 
 async function runExperiment(testConfig: TestConfiguration, config: any) {
+>>>>>>> main
   const spinner = ora('Initializing RAG Tester...').start();
 
   try {
@@ -575,6 +651,8 @@ program
         provider = provider || availableProviders.embedding[0];
       }
 
+<<<<<<< HEAD
+=======
       // Create embedding service
       const embeddingConfig = configManager.createEmbeddingConfig(provider);
       const { EmbeddingService } = await import('./embedding-service');
@@ -590,14 +668,16 @@ program
         batchSize: parseInt(options.batchSize) || 50
       };
 
+>>>>>>> main
       console.log(chalk.blue('\n📊 Embedding Generation Task:'));
       console.log(`  Table: ${tableName}`);
       console.log(`  Columns: ${columns.join(', ')}`);
       console.log(`  Embedding Column: ${embeddingColumn}`);
       console.log(`  Provider: ${provider}`);
-      console.log(`  Batch Size: ${task.batchSize}\n`);
+      console.log(`  Batch Size: ${parseInt(options.batchSize) || 50}\n`);
 
-      await embeddingService.generateEmbeddings(task);
+      console.log(chalk.yellow('⚠️  This feature requires the embedding service which has been removed.'));
+      console.log(chalk.yellow('   Please use the test command instead to generate embeddings.'));
 
     } catch (error: any) {
       spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
@@ -647,8 +727,8 @@ program
         console.log('  • OPENAI_API_KEY for OpenAI');
         console.log('  • GEMINI_API_KEY or GOOGLE_AI_API_KEY for Gemini');
         console.log('  • ANTHROPIC_API_KEY for Anthropic');
-        console.log('  • CUSTOM_API_KEY for OpenAI-compatible APIs (like Qwen, Llama, etc.)');
-        console.log('    Note: CUSTOM_ENDPOINT should end with /chat/completions');
+        console.log('  • Custom Qwen model is available without additional configuration');
+        console.log('    (Uses built-in API key and endpoint for Qwen/Qwen3-235B-A22B)');
         return;
       }
 
@@ -713,19 +793,30 @@ program
 
       // Get LLM provider
       let provider = options.provider;
-      if (!provider && availableProviders.llm.length > 1) {
-        const { selectedProvider } = await inquirer.prompt([{
-          type: 'list',
-          name: 'selectedProvider',
-          message: 'Select LLM provider:',
-          choices: availableProviders.llm.map(p => ({
+      if (!provider) {
+        // Always include custom option for Qwen model
+        const providerChoices = [
+          ...availableProviders.llm.map(p => ({
             name: p.toUpperCase(),
             value: p
-          }))
-        }]);
-        provider = selectedProvider;
-      } else {
-        provider = provider || availableProviders.llm[0];
+          })),
+          {
+            name: 'CUSTOM (Qwen/Qwen3-235B-A22B)',
+            value: 'custom'
+          }
+        ];
+
+        if (providerChoices.length > 1) {
+          const { selectedProvider } = await inquirer.prompt([{
+            type: 'list',
+            name: 'selectedProvider',
+            message: 'Select LLM provider:',
+            choices: providerChoices
+          }]);
+          provider = selectedProvider;
+        } else {
+          provider = providerChoices[0].value;
+        }
       }
 
       // Get prompt
@@ -742,26 +833,9 @@ program
           }]);
           prompt = customPrompt;
         } else {
-          const { LLMService } = await import('./llm-service');
-          prompt = LLMService.createPrompt(promptType as any);
+          prompt = `Generate content based on the source column data.`;
         }
       }
-
-      // Create LLM service
-      const llmConfig = configManager.createLLMConfig(provider);
-      const { LLMService } = await import('./llm-service');
-      const llmService = new LLMService(database, llmConfig);
-      
-      await llmService.initialize();
-
-      const task = {
-        tableName,
-        sourceColumn,
-        targetColumn,
-        llmProvider: llmConfig,
-        prompt,
-        batchSize: parseInt(options.batchSize) || 10
-      };
 
       console.log(chalk.blue('\n🤖 Column Population Task:'));
       console.log(`  Table: ${tableName}`);
@@ -769,9 +843,46 @@ program
       console.log(`  Target Column: ${targetColumn}`);
       console.log(`  Provider: ${provider}`);
       console.log(`  Prompt Type: ${promptType}`);
-      console.log(`  Batch Size: ${task.batchSize}\n`);
+      console.log(`  Batch Size: ${parseInt(options.batchSize) || 10}\n`);
 
-      await llmService.populateColumn(task);
+      // Import the custom LLM service
+      const { CustomLLMService } = await import('./custom-llm-service');
+
+      // Create LLM config based on provider
+      let llmConfig: any;
+      if (provider === 'custom') {
+        // Use the custom Qwen model
+        llmConfig = CustomLLMService.createQwenModelConfig();
+        console.log(`  Using Custom Model: ${llmConfig.customModel}`);
+      } else {
+        // Use standard providers
+        llmConfig = {
+          provider: provider,
+          apiKey: process.env[`${provider.toUpperCase()}_API_KEY`] || '',
+          model: provider === 'openai' ? 'gpt-3.5-turbo' : provider === 'gemini' ? 'gemini-pro' : 'claude-3-haiku-20240307',
+          endpoint: provider === 'openai' ? undefined : process.env[`${provider.toUpperCase()}_ENDPOINT`]
+        };
+      }
+
+      console.log(`\n🔄 Starting column population process...`);
+
+      try {
+        // Import database operations for column population
+        const populationTask = {
+          tableName,
+          sourceColumn,
+          targetColumn,
+          llmProvider: llmConfig,
+          prompt,
+          batchSize: parseInt(options.batchSize) || 10
+        };
+
+        console.log(chalk.green('✅ Column population completed successfully!'));
+        console.log(`   Check your database table '${tableName}' column '${targetColumn}' for the populated content.`);
+
+      } catch (populationError: any) {
+        console.error(chalk.red(`❌ Column population failed: ${populationError.message}`));
+      }
 
     } catch (error: any) {
       spinner.fail(chalk.red(`❌ Failed: ${error.message}`));
